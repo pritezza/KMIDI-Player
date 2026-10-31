@@ -1,0 +1,22 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+publish/
+
+# NuGet
+*.nupkg
+packages/
+
+# Misc
+*.log
+Thumbs.db
+Desktop.ini
