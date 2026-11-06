@@ -1,131 +1,137 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="96" alt="KMIDI Player のアイコン">
+  <img src="docs/images/icon.png" width="96" alt="KMIDI Player icon">
 </p>
 
 <h1 align="center">KMIDI Player</h1>
 
 <p align="center">
-  Windows 用の MIDI プレーヤー。インストール不要で、exe をダブルクリックするだけで使えます。
+  <b>English</b> | <a href="README.ja.md">日本語</a>
+</p>
+
+<p align="center">
+  A MIDI player for Windows. No installation needed: just double-click the exe.
 </p>
 
 ---
 
-標準 MIDI ファイル（.mid）を、Windows の MIDI 出力デバイス（外部音源・ソフトウェア音源・Microsoft GS Wavetable Synth など）で再生します。
-プレイリストを中心とした画面で、たくさんの曲を整理しながら聴けます。
-16 チャンネル分の鍵盤やレベルメーター、ピアノロールで、演奏の中身を目で見て楽しめます。
+KMIDI Player plays Standard MIDI Files (.mid) through a Windows MIDI output device, such as an external sound module, a software synth or the Microsoft GS Wavetable Synth.
+Its window is built around the playlist, so you can keep a large collection of songs organised while you listen.
+Keyboards and level meters for all 16 channels, and a piano roll, let you watch what is being played.
 
 <p align="center">
-  <img src="docs/images/main-window.gif" width="720" alt="メイン画面（ダークの配色で再生中）">
+  <img src="docs/images/main-window.gif" width="720" alt="Main window playing a song, with the dark theme">
 </p>
 
-### ピアノロール
+### Piano roll
 
 <table>
   <tr>
-    <td align="center"><img src="docs/images/pianoroll-horizontal.gif" alt="ピアノロール（横）"><br>横</td>
-    <td align="center"><img src="docs/images/pianoroll-vertical.gif" alt="ピアノロール（縦）"><br>縦</td>
+    <td align="center"><img src="docs/images/pianoroll-horizontal.gif" alt="Piano roll (Side)"><br>Side</td>
+    <td align="center"><img src="docs/images/pianoroll-vertical.gif" alt="Piano roll (Falling)"><br>Falling</td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/images/pianoroll-3d.gif" alt="ピアノロール（3D）"><br>3D</td>
-    <td align="center"><img src="docs/images/pianoroll-circle.gif" alt="ピアノロール（円）"><br>円</td>
+    <td align="center"><img src="docs/images/pianoroll-3d.gif" alt="Piano roll (3D)"><br>3D</td>
+    <td align="center"><img src="docs/images/pianoroll-circle.gif" alt="Piano roll (Circle)"><br>Circle</td>
   </tr>
 </table>
 
-## 特長
+## Features
 
-- **インストール不要**: .NET Framework 4.8（Windows 10 / 11 に最初から入っています）だけで動きます。ほかに入れるものはありません。
-- **プレイリスト**: ドラッグ＆ドロップで曲やフォルダを追加し、並べ替えて再生します。M3U 形式で保存・読み込みでき、TMIDI Player のプレイリスト（.TO2）も読み込めます。
-- **お気に入りの評価**: 曲ごとに星 5 段階で評価し、「星 3 つ以上だけ」のように絞り込んで再生できます。
-- **チャンネルパネル**: 16 チャンネル分の鍵盤・ペダル・ピッチベンド・レベルメーターを表示します。トラックごとにミュート・ソロ、送信先のチャンネル、移調・オクターブ、音量を変えられます。
-- **ピアノロール**: 横・縦・3D・円の 4 種類の表示で、曲の流れを見られます。ノートが鍵盤に届いたときのエフェクトや、歌詞・マーカーの表示もあります。描画は GPU で行います。
-- **再生の調整**: テンポ（25〜400%）、キー（±12 半音）、ベロシティカーブ、A-B 区間ループ、5 種類の再生モード（1 曲・1 曲リピート・全曲・全曲リピート・シャッフル）。
-- **音源への配慮**: 再生前に GM / GS / XG のリセットを自動で送ります。特定の CC（ペダルなど）を音源に送らない設定もできます。
-- **配色と言語**: ライト / ダークの配色と、日本語 / English の表示を切り替えられます。
+- **No installation:** It needs only .NET Framework 4.8, which comes with Windows 10 and 11. There is nothing else to install.
+- **Playlist:** Add songs and folders by drag and drop, then reorder and play them. Playlists can be saved and loaded in M3U format. TMIDI Player playlists (.TO2) can also be loaded.
+- **Ratings:** Rate each song from 1 to 5 stars, and play only the songs you choose, such as those with 3 stars or more.
+- **Channel panel:** Shows the keyboard, pedals, pitch bend and level meter for all 16 channels. For each track you can change mute and solo, the output channel, transpose and octave, and volume.
+- **Piano roll:** Four views (Side, Falling, 3D and Circle) show how the song flows. Notes light up with an effect when they reach the keyboard, and lyrics and markers are shown. Drawing is done on the GPU.
+- **Playback controls:** Tempo (25–400%), key (±12 semitones), velocity curve, A-B loop, and five play modes (Play One, Repeat One, Play All, Repeat All and Shuffle).
+- **Kind to your sound module:** A GM / GS / XG reset is sent automatically before playback. You can also stop specific CCs (such as pedals) from being sent to the module.
+- **Themes and languages:** Switch between light and dark themes, and between Japanese and English.
 
-## 動作環境
+## Requirements
 
-| 項目 | 内容 |
+| Item | Requirement |
 |---|---|
-| OS | Windows 10（1903 以降）/ Windows 11 |
-| CPU | x64（64bit） |
-| 必要なもの | .NET Framework 4.8（OS に最初から入っています） |
-| 音を出すもの | MIDI 出力デバイス（Windows 標準の Microsoft GS Wavetable Synth でも鳴ります） |
+| OS | Windows 10 (version 1903 or later) or Windows 11 |
+| CPU | x64 (64-bit) |
+| Runtime | .NET Framework 4.8 (included with the OS) |
+| Sound output | A MIDI output device (the Microsoft GS Wavetable Synth built into Windows also works) |
 
-## ダウンロードと起動
+## Download and start
 
-1. [Releases](https://github.com/pritezza/KMIDI-Player/releases) から、最新版の zip ファイルをダウンロードします。
-2. zip を好きなフォルダに展開します。
-3. `KMidiPlayer.exe` をダブルクリックして起動します。
+1. Download the latest zip file from the [Releases](https://github.com/pritezza/KMIDI-Player/releases) page.
+2. Extract the zip into any folder.
+3. Double-click `KMidiPlayer.exe` to start it.
 
-> **「Windows によって PC が保護されました」と表示された場合**
-> インターネットから入手した、署名の無いアプリのため表示されます。「詳細情報」→「実行」で起動できます。
+> **If "Windows protected your PC" appears**
+> This happens because the app was downloaded from the internet and is not signed. Click "More info", then "Run anyway" to start it.
 
-アンインストールは、展開したフォルダを削除するだけです（レジストリは使いません）。
+To uninstall, just delete the extracted folder. The registry is not used.
 
-## 使い方
+## Usage
 
-1. 「設定」メニューで、音を出す MIDI 出力デバイスを選びます。
-2. MIDI ファイルやフォルダを、画面にドラッグ＆ドロップしてプレイリストに追加します。
-3. 曲をダブルクリックすると再生が始まります。
+The display language is Japanese the first time you start KMIDI Player. To switch to English, open **設定** (Settings) → **環境設定** (Preferences), and set **表示言語** (Language) to **English**.
 
-プレイリストは終了時に自動で保存され、次に起動したときに元に戻ります。
+1. In the **Settings** menu, choose the MIDI output device to play through.
+2. Drag and drop MIDI files or folders onto the window to add them to the playlist.
+3. Double-click a song to start playing.
 
-### キーボードショートカット
+The playlist is saved automatically when you quit, and restored the next time you start.
 
-| キー | 動作 |
+### Keyboard shortcuts
+
+| Key | Action |
 |---|---|
-| Space | 再生 / 一時停止 |
-| ← / → | 5 秒戻る / 5 秒進む |
-| Ctrl+← / Ctrl+→ | 前の曲 / 次の曲 |
-| Enter | 選んでいる曲を再生 |
-| Ctrl+O | ファイルを追加 |
-| Ctrl+S / Ctrl+Shift+S | プレイリストを保存 / 名前を付けて保存 |
-| Ctrl+C / Ctrl+X / Ctrl+V | 曲のコピー / カット / 貼り付け |
-| Delete | 選んだ曲をリストから削除 |
-| 0〜5 | 選んだ曲の評価（0 は未評価） |
-| F11 | ピアノロールの全画面表示 |
+| Space | Play / pause |
+| ← / → | Back 5 seconds / forward 5 seconds |
+| Ctrl+← / Ctrl+→ | Previous song / next song |
+| Enter | Play the selected song |
+| Ctrl+O | Add files |
+| Ctrl+S / Ctrl+Shift+S | Save the playlist / save it under a new name |
+| Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste songs |
+| Delete | Remove the selected songs from the list |
+| 0–5 | Rate the selected song (0 means no rating) |
+| F11 | Show the piano roll full screen |
 
-## 設定の保存場所
+## Where settings are saved
 
-設定（`KMidiPlayer.settings.xml`）とプレイリスト（`KMidiPlayer.playlist.m3u8`）は、exe と同じフォルダに保存します。フォルダごとコピーすれば、設定ごと別の PC に持っていけます。
+Settings (`KMidiPlayer.settings.xml`) and the playlist (`KMidiPlayer.playlist.m3u8`) are saved in the same folder as the exe. Copy the whole folder to take KMIDI Player, with its settings, to another PC.
 
-exe のフォルダに書き込めない場合（`Program Files` の下に置いた場合など）は、`%APPDATA%\KMIDI Player` に保存します。
+If the exe's folder can't be written to (for example, under `Program Files`), they are saved in `%APPDATA%\KMIDI Player` instead.
 
-## 対応ファイル
+## Supported files
 
-| 種類 | 対応 |
+| Type | Support |
 |---|---|
-| 標準 MIDI ファイル（.mid）Format 0 / 1 | 再生できます |
-| プレイリスト（.m3u / .m3u8） | 読み込み・保存できます（評価も保存します） |
-| TMIDI Player のプレイリスト（.TO2） | 読み込みだけできます |
-| Format 2、RIFF MIDI（.rmi）、RCP、MML など | 対応していません |
+| Standard MIDI File (.mid), Format 0 / 1 | Plays |
+| Playlist (.m3u / .m3u8) | Loads and saves (ratings are saved too) |
+| TMIDI Player playlist (.TO2) | Loads only |
+| Format 2, RIFF MIDI (.rmi), RCP, MML, etc. | Not supported |
 
-曲名や歌詞などの文字は、Shift_JIS として読みます（日本の MIDI データで一般的なため）。
+Text such as song titles and lyrics is read as Shift_JIS, as is common in Japanese MIDI files.
 
-## 既知の制約
+## Known limitations
 
-- Windows 標準の Microsoft GS Wavetable Synth は、音が出るまでの遅れが大きめです。これは Windows 側の制約です。外部音源やソフトウェア音源（仮想 MIDI ケーブル経由など）を使うと解消できます。
-- 起動中の KMIDI Player にファイルを渡す機能はまだありません。起動中に別のファイルを開くと、もう 1 つ起動します。
+- The Microsoft GS Wavetable Synth built into Windows has a fairly long delay before sound comes out. This is a limitation of Windows. Using an external sound module or a software synth (for example, through a virtual MIDI cable) avoids it.
+- Files can't yet be passed to a KMIDI Player that is already running. Opening another file while it is running starts a second copy.
 
-## ソースからのビルド
+## Building from source
 
-外部ライブラリや NuGet パッケージは使っていません。
+No external libraries or NuGet packages are used.
 
-- **Visual Studio 2026**（「.NET デスクトップ開発」ワークロードと .NET Framework 4.8 Targeting Pack）で `KMidiPlayer.sln` を開いてビルドします。
-- または、.NET SDK があればコマンドでビルドできます。
+- Open `KMidiPlayer.sln` in **Visual Studio 2026** (with the ".NET desktop development" workload and the .NET Framework 4.8 Targeting Pack) and build it.
+- Or, if you have the .NET SDK, build from the command line:
 
   ```
   dotnet build KMidiPlayer.sln -c Release
   ```
 
-  `src\KMidiPlayer\bin\x64\Release\net48\KMidiPlayer.exe` ができます。
+  This creates `src\KMidiPlayer\bin\x64\Release\net48\KMidiPlayer.exe`.
 
-詳しい仕様は [docs/SPEC.md](docs/SPEC.md) にあります。
+The detailed specification is in [docs/SPEC.md](docs/SPEC.md) (in Japanese).
 
-## ライセンス
+## License
 
 [MIT License](LICENSE)
 
-## 作者
+## Author
 
 PRITEZZA
