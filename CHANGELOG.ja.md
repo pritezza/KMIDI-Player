@@ -4,7 +4,7 @@
 
 KMIDI Player のバージョンごとの変更点です。ダウンロードは [Releases](https://github.com/pritezza/KMIDI-Player/releases) からどうぞ。
 
-## 1.1.0 - Unreleased（未公開）
+## 1.1.0 - 2026-11-16
 
 ### 追加
 

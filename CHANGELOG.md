@@ -4,7 +4,7 @@
 
 This page lists what changed in each version of KMIDI Player. Downloads are on the [Releases](https://github.com/pritezza/KMIDI-Player/releases) page.
 
-## 1.1.0 - Unreleased
+## 1.1.0 - 2026-11-16
 
 ### Added
 
