@@ -19,6 +19,7 @@ namespace KMidiPlayer.Controls
     /// <see cref="ShowUsedChannelsOnly"/> が true の場合は、曲の中でノートを鳴らすチャンネル（とソロ中のチャンネル）
     /// だけを表示し、その分 1 行を高くする。
     /// 1 行の高さは CH のスピンボックスが収まる高さより低くせず、全行が収まらない場合はスクロールバーを出す。
+    /// <see cref="ShowInstrumentNames"/> が true の場合は、CH・M・S の下に音色名を表示し、その分 1 行を高くする。
     /// </remarks>
     public class ChannelView : Control, IThemeable
     {
@@ -26,24 +27,25 @@ namespace KMidiPlayer.Controls
         private const int NoteCount = MidiSequencer.NoteCount;
         private const int WhiteKeyCount = 75; // ノート 0～127 の白鍵の数
 
-        private const int HeaderHeight = 18;
-        private const int NumberWidth = 30;
-        private const int SpinWidth = 46;
-        private const int OctaveColumnWidth = 62; // 見出しの「オクターブ」が収まる幅
-        private const int ToggleWidth = 24;
-        private const int MeterWidth = 100;
-        private const int PedalColumnWidth = 36; // 見出しの「ペダル」が収まる幅
-        private const int BendColumnWidth = 44; // 見出しの「PB/Mod」が収まる幅
-        private const int PedalLampWidth = 10;
-        private const int PedalLampGap = 3;
-        private const int MaxPedalLampHeight = 10;
-        private const int Gap = 6;
+        // 配置の大きさ（100%・96 DPI のときの px。画面の拡大と DPI に合わせて広げる。Px を参照）
+        private int HeaderHeight => Px(18);
+        private int NumberWidth => Px(30);
+        private int SpinWidth => Px(46);
+        private int OctaveColumnWidth => Px(62); // 見出しの「オクターブ」が収まる幅
+        private int ToggleWidth => Px(24);
+        private int MeterWidth => Px(100);
+        private int PedalColumnWidth => Px(36); // 見出しの「ペダル」が収まる幅
+        private int BendColumnWidth => Px(44); // 見出しの「PB/Mod」が収まる幅
+        private int PedalLampWidth => Px(10);
+        private int PedalLampGap => Px(3);
+        private int MaxPedalLampHeight => Px(10);
+        private int Gap => Px(6);
 
         /// <summary>1 行の高さの上限（チャンネルが少ない曲で、鍵盤が縦に伸びすぎないようにする）。</summary>
-        private const int MaxRowHeight = 60;
-        private const int MaxToggleHeight = 20;
-        private const int MaxMeterHeight = 14;
-        private const int VolumeKnobSize = 5; // ▲ の高さ（幅はこの 2 倍）
+        private int MaxRowHeight => Px(60);
+        private int MaxToggleHeight => Px(20);
+        private int MaxMeterHeight => Px(14);
+        private int VolumeKnobSize => Px(5); // ▲ の高さ（幅はこの 2 倍）
 
         // 1 オクターブ内の各音について、白鍵なら白鍵の番号（0～6）、黒鍵なら左隣の白鍵の番号
         private static readonly int[] KeyWhiteIndex = { 0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6 };
@@ -109,7 +111,14 @@ namespace KMidiPlayer.Controls
         private bool _scrollBarNeeded;
 
         private bool _showUsedChannelsOnly = true;
-        private Bitmap _background;
+        /// <summary>
+        /// 変化の少ない部分（見出し・鍵盤・枠・音色名など）を描いておく画面用のバッファ。
+        /// 画面と同じ形式のバッファにする（ふつうの画像に GDI で文字を描くと、Yu Gothic UI などのなめらかな文字が太くにじむため）。
+        /// </summary>
+        private BufferedGraphics _background;
+
+        /// <summary>背景のバッファを作る元（コントロールの二重バッファと共有しないよう、専用のものを使う）。</summary>
+        private readonly BufferedGraphicsContext _backgroundContext = new BufferedGraphicsContext();
 
         // マウスで押している鍵（押していなければ -1）
         private int _pressedChannel = -1;
@@ -125,8 +134,37 @@ namespace KMidiPlayer.Controls
         /// <summary>ボリュームの上で回したホイールの、1 目盛りに満たない分。</summary>
         private int _volumeWheelDelta;
 
+        /// <summary>配置の大きさの倍率（UiScale.Of。画面の拡大と DPI で決まる）。</summary>
+        private float _scale = 1;
+
+        // 音色名（CH・M・S の下に表示する）
+        private InstrumentLibrary _instruments;
+        private bool _showInstrumentNames;
+
+        /// <summary>チャンネルごとの、今の音色（曲を読み込んでいなければ null）と、その名前。</summary>
+        private readonly InstrumentState?[] _instrumentStates = new InstrumentState?[ChannelCount];
+        private readonly string[] _instrumentNames = new string[ChannelCount];
+
+        /// <summary>名前を探したときの <see cref="InstrumentLibrary.Version"/>（音源定義が変わったら探し直す）。</summary>
+        private int _instrumentVersion = -1;
+
+        /// <summary>
+        /// フォントの高さ（Font.Height は呼ぶたびに画面のデバイスコンテキストを作って測るので遅い。
+        /// 配置の計算で何度も使うので、フォントが変わったときだけ測る）。
+        /// </summary>
+        private int _fontHeight;
+
+        /// <summary>CH・M・S の列（音色名の幅）を、初期の幅から広げた分（100%・96 DPI のときの px）。音色名を表示しているときだけ効く。</summary>
+        private int _nameColumnExtra;
+
+        // CH・M・S の列の幅をドラッグで変えているときの、押した位置と、そのときの広げた分（していなければ _columnDragStartX が -1）
+        private int _columnDragStartX = -1;
+        private int _columnDragStartExtra;
+
         public ChannelView()
         {
+            _scale = UiScale.Of(this);
+            _fontHeight = Font.Height;
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                 | ControlStyles.ResizeRedraw | ControlStyles.UserPaint,
@@ -147,11 +185,11 @@ namespace KMidiPlayer.Controls
             ForeColor = Theme.Current.Text;
 
             // CH は 1 から数えて表示する
-            _outputSpins = new SpinColumn(this, 1, ChannelCount, channel => channel + 1,
+            _outputSpins = new SpinColumn(this, SpinWidth - 4, 1, ChannelCount, channel => channel + 1,
                 (channel, value) => OutputChannelChanged?.Invoke(this, new OutputChannelEventArgs(channel, value - 1)));
-            _transposeSpins = new SpinColumn(this, MidiSequencer.MinChannelTranspose, MidiSequencer.MaxChannelTranspose, channel => 0,
+            _transposeSpins = new SpinColumn(this, SpinWidth - 4, MidiSequencer.MinChannelTranspose, MidiSequencer.MaxChannelTranspose, channel => 0,
                 (channel, value) => TransposeChanged?.Invoke(this, new ChannelValueEventArgs(channel, value)));
-            _octaveSpins = new SpinColumn(this, MidiSequencer.MinChannelOctave, MidiSequencer.MaxChannelOctave, channel => 0,
+            _octaveSpins = new SpinColumn(this, SpinWidth - 4, MidiSequencer.MinChannelOctave, MidiSequencer.MaxChannelOctave, channel => 0,
                 (channel, value) => OctaveChanged?.Invoke(this, new ChannelValueEventArgs(channel, value)));
             UpdateLayout();
         }
@@ -204,6 +242,69 @@ namespace KMidiPlayer.Controls
             set => _showUsedChannelsOnly = value;
         }
 
+        /// <summary>音色名を決める音源定義。null なら音色名を表示しない。</summary>
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public InstrumentLibrary Instruments
+        {
+            get => _instruments;
+            set
+            {
+                _instruments = value;
+                ClearInstrumentNames();
+            }
+        }
+
+        /// <summary>
+        /// CH・M・S の下に、チャンネルの音色名を表示するかどうか（表示すると、1 行がその分高くなる）。
+        /// 名前は、次に <see cref="UpdateFrom"/> を呼んだときに反映される。
+        /// </summary>
+        [Category("Appearance")]
+        [DefaultValue(false)]
+        public bool ShowInstrumentNames
+        {
+            get => _showInstrumentNames;
+            set
+            {
+                if (_showInstrumentNames == value)
+                {
+                    return;
+                }
+                _showInstrumentNames = value;
+                ClearInstrumentNames();
+                HideTip();
+                UpdateLayout();
+            }
+        }
+
+        /// <summary>CH・M・S の列の幅を、ドラッグで広げられる上限（100%・96 DPI のときの px）。</summary>
+        public const int MaxNameColumnExtraWidth = 300;
+
+        /// <summary>CH・M・S の列の幅を狭めても、鍵盤にはこれだけの幅を残す（100%・96 DPI のときの px）。</summary>
+        private const int MinKeyboardWidth = 150;
+
+        /// <summary>
+        /// CH・M・S の列（音色名の幅）を、初期の幅から広げた分（0～<see cref="MaxNameColumnExtraWidth"/>。100%・96 DPI のときの px）。
+        /// 音色名を表示しているときだけ効く。S の列と鍵盤の間をドラッグして変えられる（ダブルクリックで 0 に戻る）。
+        /// </summary>
+        [Category("Layout")]
+        [DefaultValue(0)]
+        public int NameColumnExtraWidth
+        {
+            get => _nameColumnExtra;
+            set
+            {
+                value = Math.Max(0, Math.Min(MaxNameColumnExtraWidth, value));
+                if (value == _nameColumnExtra)
+                {
+                    return;
+                }
+                _nameColumnExtra = value;
+                HideTip();
+                UpdateLayout();
+            }
+        }
+
         /// <summary>表示言語を変えたときに呼ぶ。見出しを描き直し、出ているツールチップを消す。</summary>
         public void UpdateTexts()
         {
@@ -253,6 +354,12 @@ namespace KMidiPlayer.Controls
                     _volumes[channel] = volume;
                     changed = true;
                 }
+            }
+
+            if (UpdateInstrumentNames(sequencer))
+            {
+                InvalidateBackground(); // 音色名は背景の画像に描く
+                changed = true;
             }
 
             for (int channel = 0; channel < ChannelCount; channel++)
@@ -338,6 +445,50 @@ namespace KMidiPlayer.Controls
         }
 
         /// <summary>
+        /// 今の再生位置での、チャンネルごとの音色と名前を求め直す。表示する名前が変わった場合は true を返す。
+        /// </summary>
+        private bool UpdateInstrumentNames(MidiSequencer sequencer)
+        {
+            if (!_showInstrumentNames || _instruments == null)
+            {
+                return false;
+            }
+
+            // 音源定義を選び直したら、音色が同じでも名前を探し直す
+            bool definitionChanged = _instrumentVersion != _instruments.Version;
+            _instrumentVersion = _instruments.Version;
+
+            MidiFile song = sequencer.Song;
+            TimeSpan position = sequencer.Position;
+            bool changed = false;
+            for (int channel = 0; channel < ChannelCount; channel++)
+            {
+                InstrumentState? state = song?.Programs.GetState(channel, sequencer.GetOutputChannel(channel), position, sequencer.AutoReset);
+                if (!definitionChanged && Nullable.Equals(state, _instrumentStates[channel]))
+                {
+                    continue;
+                }
+                _instrumentStates[channel] = state;
+                string name = state.HasValue ? _instruments.GetName(state.Value) : null;
+                if (name != _instrumentNames[channel])
+                {
+                    _instrumentNames[channel] = name;
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+
+        /// <summary>覚えている音色名を消す（次の <see cref="UpdateFrom"/> で求め直す）。</summary>
+        private void ClearInstrumentNames()
+        {
+            Array.Clear(_instrumentStates, 0, ChannelCount);
+            Array.Clear(_instrumentNames, 0, ChannelCount);
+            _instrumentVersion = -1;
+            InvalidateBackground();
+        }
+
+        /// <summary>
         /// ピークホールドの印を動かす。メーターが印を超えたら印を上げ、決めた時間そのまま残してから、メーターと同じ速さで下げる。
         /// </summary>
         /// <returns>印の位置が変わったかどうか。</returns>
@@ -375,6 +526,20 @@ namespace KMidiPlayer.Controls
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left)
             {
+                return;
+            }
+
+            if (HitTestColumnSplitter(e.Location))
+            {
+                if (e.Clicks >= 2)
+                {
+                    NameColumnExtraWidth = 0;
+                }
+                else
+                {
+                    _columnDragStartX = e.X;
+                    _columnDragStartExtra = Math.Min(_nameColumnExtra, (int)(MaxNameColumnExtraPixels / _scale)); // 見えている幅から動かす
+                }
                 return;
             }
 
@@ -426,6 +591,14 @@ namespace KMidiPlayer.Controls
         {
             base.OnMouseMove(e);
 
+            if (_columnDragStartX >= 0)
+            {
+                // 鍵盤が狭くなりすぎない範囲で、CH・M・S の列を広げる / 狭める
+                int extra = _columnDragStartExtra + (int)Math.Round((e.X - _columnDragStartX) / _scale);
+                NameColumnExtraWidth = Math.Min(extra, (int)(MaxNameColumnExtraPixels / _scale));
+                return;
+            }
+
             if (_volumeDragChannel >= 0)
             {
                 SetVolume(_volumeDragChannel, VolumeFromX(e.X));
@@ -433,12 +606,17 @@ namespace KMidiPlayer.Controls
                 return;
             }
 
+            bool onSplitter = _pressedNote < 0 && HitTestColumnSplitter(e.Location);
             int volumeChannel = _pressedNote < 0 ? HitTestVolume(e.Location) : -1;
             int pedalRow = -1;
             int pedal = -1;
             bool onPedal = _pressedNote < 0 && volumeChannel < 0 && HitTestPedal(e.Location, out pedalRow, out pedal);
-            Cursor = volumeChannel >= 0 ? Cursors.SizeWE : onPedal ? Cursors.Hand : Cursors.Default;
-            if (volumeChannel >= 0)
+            Cursor = onSplitter ? Cursors.VSplit : volumeChannel >= 0 ? Cursors.SizeWE : onPedal ? Cursors.Hand : Cursors.Default;
+            if (onSplitter)
+            {
+                HideTip();
+            }
+            else if (volumeChannel >= 0)
             {
                 ShowVolumeTip(volumeChannel);
             }
@@ -451,6 +629,12 @@ namespace KMidiPlayer.Controls
                 int bendChannel = _rowChannels[bendRow];
                 ShowTip(Texts.BendTip(_pitchBends[bendChannel], _modulations[bendChannel]),
                     new Point(GetBendAreaBounds(bendRow).Left, GetRowBounds(bendRow).Bottom + 2));
+            }
+            else if (_pressedNote < 0 && HitTestInstrumentName(e.Location, out int nameRow))
+            {
+                int nameChannel = _rowChannels[nameRow];
+                ShowTip(Texts.InstrumentTip(_instrumentNames[nameChannel], _instrumentStates[nameChannel].Value, _instruments.CurrentName),
+                    new Point(GetInstrumentNameBounds(nameRow).Left, GetRowBounds(nameRow).Bottom + 2));
             }
             else
             {
@@ -474,6 +658,7 @@ namespace KMidiPlayer.Controls
             {
                 ReleaseKey();
                 EndVolumeDrag(e.Location);
+                _columnDragStartX = -1;
             }
         }
 
@@ -483,6 +668,15 @@ namespace KMidiPlayer.Controls
             // ウィンドウの切り替えなどでマウスを離したことが届かない場合に備える
             ReleaseKey();
             EndVolumeDrag(PointToClient(MousePosition));
+            _columnDragStartX = -1;
+        }
+
+        /// <summary>
+        /// CH・M・S の列と鍵盤の間（列の幅を変えるドラッグの場所）かどうか。音色名を表示しているときだけ。
+        /// </summary>
+        private bool HitTestColumnSplitter(Point point)
+        {
+            return _showInstrumentNames && point.X >= NameColumnRight - 1 && point.X < KeyboardLeft + 1 && point.X < ContentWidth;
         }
 
         protected override void OnMouseLeave(EventArgs e)
@@ -534,8 +728,18 @@ namespace KMidiPlayer.Controls
         protected override void OnFontChanged(EventArgs e)
         {
             base.OnFontChanged(e); // スピンボックスにもフォントが引き継がれ、高さが変わる
+            _scale = UiScale.Of(this);
+            _fontHeight = Font.Height;
+            foreach (SpinColumn column in new[] { _outputSpins, _transposeSpins, _octaveSpins })
+            {
+                column?.SetWidth(SpinWidth - 4);
+            }
+            InvalidateBackground();
             UpdateLayout();
         }
+
+        /// <summary>100%・96 DPI のときの大きさ（px）を、画面の拡大と DPI に合わせる。</summary>
+        private int Px(int pixels) => (int)Math.Round(pixels * _scale);
 
         protected override void OnBackColorChanged(EventArgs e)
         {
@@ -567,6 +771,7 @@ namespace KMidiPlayer.Controls
             {
                 _background?.Dispose();
                 _background = null;
+                _backgroundContext.Dispose();
                 _toolTip.Dispose();
             }
             base.Dispose(disposing);
@@ -585,7 +790,7 @@ namespace KMidiPlayer.Controls
                 _background = CreateBackground();
             }
             Graphics g = e.Graphics;
-            g.DrawImageUnscaled(_background, 0, 0);
+            _background.Render(g);
 
             Theme theme = Theme.Current;
             using (var noteBrush = new SolidBrush(theme.Accent))
@@ -768,7 +973,7 @@ namespace KMidiPlayer.Controls
             {
                 int channel = _rowChannels[row];
                 Rectangle rowBounds = GetRowBounds(row);
-                _outputSpins.Place(channel, NumberWidth, rowBounds);
+                _outputSpins.Place(channel, NumberWidth, GetChannelLineBounds(row));
                 _transposeSpins.Place(channel, TransposeLeft, rowBounds);
                 _octaveSpins.Place(channel, OctaveLeft + (OctaveColumnWidth - SpinWidth) / 2, rowBounds);
                 visible[channel] = true;
@@ -818,6 +1023,23 @@ namespace KMidiPlayer.Controls
                 if (point.X >= area.Left && point.X < area.Right && GetRowBounds(row).Contains(point))
                 {
                     return true;
+                }
+            }
+            row = -1;
+            return false;
+        }
+
+        /// <summary>マウスの位置にある、音色名の行を求める（名前を表示している行だけ）。</summary>
+        private bool HitTestInstrumentName(Point point, out int row)
+        {
+            if (_showInstrumentNames && _instruments != null)
+            {
+                for (row = _firstRow; row < EndRow; row++)
+                {
+                    if (_instrumentNames[_rowChannels[row]] != null && GetInstrumentNameBounds(row).Contains(point))
+                    {
+                        return true;
+                    }
                 }
             }
             row = -1;
@@ -1048,11 +1270,15 @@ namespace KMidiPlayer.Controls
             return new SolidBrush(Color.FromArgb(150, BackColor));
         }
 
-        private Bitmap CreateBackground()
+        private BufferedGraphics CreateBackground()
         {
-            var bitmap = new Bitmap(ClientSize.Width, ClientSize.Height);
+            BufferedGraphics buffer;
+            using (Graphics screen = CreateGraphics())
+            {
+                buffer = _backgroundContext.Allocate(screen, ClientRectangle);
+            }
+            Graphics g = buffer.Graphics; // バッファが持っているので、ここでは破棄しない
             Theme theme = Theme.Current;
-            using (Graphics g = Graphics.FromImage(bitmap))
             using (var whiteKeyBrush = new SolidBrush(theme.KeyWhite))
             using (var borderPen = new Pen(theme.KeyBorder))
             using (var blackKeyBrush = new SolidBrush(theme.KeyBlack))
@@ -1082,10 +1308,19 @@ namespace KMidiPlayer.Controls
                     int channel = _rowChannels[row];
                     Rectangle rowBounds = GetRowBounds(row);
                     Color textColor = _audible[channel] ? theme.Text : theme.DisabledText;
-                    TextRenderer.DrawText(g, (channel + 1).ToString(), Font, new Rectangle(0, rowBounds.Top, NumberWidth - 4, rowBounds.Height), textColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+                    Rectangle channelLine = GetChannelLineBounds(row);
+                    TextRenderer.DrawText(g, (channel + 1).ToString(), Font, new Rectangle(0, channelLine.Top, NumberWidth - 4, channelLine.Height), textColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
 
                     DrawToggle(g, GetMuteBounds(row), "M", _muted[channel], MuteColor);
                     DrawToggle(g, GetSoloBounds(row), "S", _solo[channel], SoloColor);
+
+                    string instrumentName = _showInstrumentNames ? _instrumentNames[channel] : null;
+                    if (instrumentName != null)
+                    {
+                        // 名前に「&」が入っていても、そのまま表示する（NoPrefix）。収まらなければ末尾を「…」にする
+                        TextRenderer.DrawText(g, instrumentName, Font, GetInstrumentNameBounds(row), textColor,
+                            TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+                    }
 
                     Rectangle keyboard = GetKeyboardBounds(row);
                     if (keyboard.Width > 0 && keyboard.Height > 0)
@@ -1138,7 +1373,7 @@ namespace KMidiPlayer.Controls
                     }
                 }
             }
-            return bitmap;
+            return buffer;
         }
 
         /// <summary>ミュート・ソロのボタンを描く（オンは色で塗った角丸の四角、オフは枠だけ）。</summary>
@@ -1185,12 +1420,21 @@ namespace KMidiPlayer.Controls
 
         // ---- レイアウト（引数はチャンネル番号ではなく、上から何行目か） ----
 
-        /// <summary>1 行の高さ。CH のスピンボックスが収まる高さより低くはしない。</summary>
+        /// <summary>音色名の高さ（表示しなければ 0）。</summary>
+        private int NameHeight => _showInstrumentNames ? _fontHeight + Px(1) : 0;
+
+        /// <summary>CH・M・S と、その下の音色名の間のすき間（表示しなければ 0）。</summary>
+        private int NameGap => _showInstrumentNames ? Px(4) : 0;
+
+        /// <summary>音色名を表示するときに、1 行の高さに足すゆとり（鍵盤が低くなりすぎないように）。</summary>
+        private int NameRowPadding => _showInstrumentNames ? Px(10) : 0;
+
+        /// <summary>1 行の高さ。CH のスピンボックス（と音色名）が収まる高さより低くはしない。</summary>
         private int RowHeight
         {
             get
             {
-                int minimum = _outputSpins.Height;
+                int minimum = _outputSpins.Height + NameGap + NameHeight + NameRowPadding;
                 return Math.Min(Math.Max(MaxRowHeight, minimum), Math.Max(minimum, (ClientSize.Height - HeaderHeight) / _rowCount));
             }
         }
@@ -1212,7 +1456,7 @@ namespace KMidiPlayer.Controls
         /// <summary>スクロールバーを除いた幅。</summary>
         private int ContentWidth => ClientSize.Width - (_scrollBarNeeded ? _scrollBar.Width : 0);
 
-        private static int ToggleLeft => NumberWidth + SpinWidth;
+        private int ToggleLeft => NumberWidth + SpinWidth;
 
         /// <summary>レベルメーターの右の、移調の列の左端。</summary>
         private int TransposeLeft => ContentWidth - SpinWidth - OctaveColumnWidth;
@@ -1245,15 +1489,52 @@ namespace KMidiPlayer.Controls
 
         private Rectangle GetToggleBounds(int row, int left)
         {
-            Rectangle rowBounds = GetRowBounds(row);
-            int height = Math.Min(MaxToggleHeight, rowBounds.Height - 2);
-            return new Rectangle(left + 2, rowBounds.Top + (rowBounds.Height - height) / 2, ToggleWidth - 4, height);
+            Rectangle line = GetChannelLineBounds(row);
+            int height = Math.Min(MaxToggleHeight, line.Height - 2);
+            return new Rectangle(left + 2, line.Top + (line.Height - height) / 2, ToggleWidth - 4, height);
         }
+
+        /// <summary>
+        /// TR の番号・CH のスピンボックス・M・S を並べる範囲。音色名を表示するときは、その下に名前を置くので、
+        /// 2 つを合わせた高さが行の中央に来るように上へずらす。表示しなければ行全体。
+        /// </summary>
+        private Rectangle GetChannelLineBounds(int row)
+        {
+            Rectangle rowBounds = GetRowBounds(row);
+            if (!_showInstrumentNames)
+            {
+                return rowBounds;
+            }
+            int height = _outputSpins.Height;
+            int top = rowBounds.Top + Math.Max(0, (rowBounds.Height - height - NameGap - NameHeight) / 2);
+            return new Rectangle(rowBounds.Left, top, rowBounds.Width, height);
+        }
+
+        /// <summary>音色名の範囲（CH のスピンボックスの左端から S のボタンの右端まで）。</summary>
+        private Rectangle GetInstrumentNameBounds(int row)
+        {
+            Rectangle line = GetChannelLineBounds(row);
+            int left = NumberWidth + 2;
+            return new Rectangle(left, line.Bottom + NameGap, NameColumnRight - 2 - left, NameHeight);
+        }
+
+        /// <summary>CH・M・S の列（と音色名）の右端。音色名を表示しているときは、ドラッグで広げた分だけ右に寄る。</summary>
+        private int NameColumnRight => ToggleLeft + ToggleWidth * 2 + (_showInstrumentNames ? Math.Min(Px(_nameColumnExtra), MaxNameColumnExtraPixels) : 0);
+
+        /// <summary>
+        /// 今の幅で、CH・M・S の列を広げられる上限（px）。鍵盤に <see cref="MinKeyboardWidth"/> を残す。
+        /// 広げた後でウィンドウを狭めたり、画面の拡大を大きくしたりしても、鍵盤が消えたり、名前が右の列に重なったりしないように、配置ではこの上限で止める
+        /// （設定の値 <see cref="NameColumnExtraWidth"/> はそのまま残し、広くなれば元の幅に戻る）。
+        /// </summary>
+        private int MaxNameColumnExtraPixels => Math.Max(0, PedalLeft - Gap - Px(MinKeyboardWidth) - (ToggleLeft + ToggleWidth * 2 + Gap));
+
+        /// <summary>鍵盤の左端。</summary>
+        private int KeyboardLeft => NameColumnRight + Gap;
 
         private Rectangle GetKeyboardBounds(int row)
         {
             Rectangle rowBounds = GetRowBounds(row);
-            int left = ToggleLeft + ToggleWidth * 2 + Gap;
+            int left = KeyboardLeft;
             int right = PedalLeft - Gap;
             return new Rectangle(left, rowBounds.Top + 1, right - left, rowBounds.Height - 2);
         }
@@ -1334,7 +1615,7 @@ namespace KMidiPlayer.Controls
             private bool _syncing;
 
             /// <param name="valueChanged">操作で値が変わったときに、チャンネルと新しい値を受け取る。</param>
-            public SpinColumn(Control parent, int minimum, int maximum, Func<int, int> initialValue, Action<int, int> valueChanged)
+            public SpinColumn(Control parent, int width, int minimum, int maximum, Func<int, int> initialValue, Action<int, int> valueChanged)
             {
                 _valueChanged = valueChanged;
                 for (int channel = 0; channel < ChannelCount; channel++)
@@ -1346,7 +1627,7 @@ namespace KMidiPlayer.Controls
                         Minimum = minimum,
                         Maximum = maximum,
                         Value = _values[channel],
-                        Width = SpinWidth - 4,
+                        Width = width,
                         Visible = false,
                     };
                     spin.ValueChanged += (sender, e) => OnValueChanged(spinChannel);
@@ -1382,6 +1663,15 @@ namespace KMidiPlayer.Controls
             {
                 NumericUpDown spin = _spins[channel];
                 spin.Location = new Point(left + 2, rowBounds.Top + (rowBounds.Height - spin.Height) / 2);
+            }
+
+            /// <summary>スピンボックスの幅を変える（画面の拡大が変わったとき）。</summary>
+            public void SetWidth(int width)
+            {
+                foreach (NumericUpDown spin in _spins)
+                {
+                    spin.Width = width;
+                }
             }
 
             public void SetVisible(int channel, bool visible)

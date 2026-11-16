@@ -30,6 +30,8 @@ namespace KMidiPlayer.Midi
         public const int DefaultChannelVolume = 100;
         public const int MinVelocityCurve = -12;
         public const int MaxVelocityCurve = 12;
+        public const int MinMasterVolume = 0;
+        public const int MaxMasterVolume = 100;
 
         // ペダルのコントロールチェンジ番号（値が 64 以上でオン）
         public const int DamperPedal = 64;
@@ -124,6 +126,18 @@ namespace KMidiPlayer.Midi
 
         // 再生スレッドが反映済みの _channelVolumes
         private readonly int[] _appliedChannelVolumes = new int[ChannelCount];
+
+        /// <summary>音源のマスター音量（%。画面で指定した値）。</summary>
+        private volatile int _masterVolume = MaxMasterVolume;
+
+        /// <summary>音源に送った（再生中は再生スレッドが反映済みの）マスター音量。</summary>
+        private int _appliedMasterVolume = MaxMasterVolume;
+
+        /// <summary>曲中のリセットの後に、マスター音量を送り直す時刻（_clock の経過時間。予定が無ければ null。再生スレッドだけで使う）。</summary>
+        private TimeSpan? _masterVolumeResendAt;
+
+        /// <summary>再生中に手動でリセットを送ったので、再生スレッドにマスター音量の送り直しを頼んでいるか（UI スレッドが立てる）。</summary>
+        private volatile bool _masterVolumeResendRequested;
 
         private volatile LoopRange _loop;
         private int _tempoPercent = 100;
@@ -271,6 +285,89 @@ namespace KMidiPlayer.Midi
             return table;
         }
 
+        /// <summary>
+        /// 音源のマスター音量（0～100%。100% が音源の最大＝リセット直後の値）。Universal Master Volume（F0 7F 7F 04 01 ll mm F7）で送る。
+        /// 変えるとすぐに送る。リセット（自動リセット・曲中のリセット・手動のリセット）で音源の値が戻るので、100% 以外なら送り直す。
+        /// </summary>
+        /// <remarks>
+        /// この SysEx に反応しない音源もある。曲がマスター音量を送った場合は、次にリセットするまで曲の値になる。
+        /// </remarks>
+        public int MasterVolume
+        {
+            get => _masterVolume;
+            set
+            {
+                value = Math.Max(MinMasterVolume, Math.Min(MaxMasterVolume, value));
+                _masterVolume = value;
+
+                // 再生中は、再生スレッドが送る（曲のイベントの送信と競合させないため）。
+                // 曲の最後まで再生して再生スレッドが終わっていれば、ここで送る
+                if (!_isRunning || _reachedEnd)
+                {
+                    _appliedMasterVolume = value;
+                    SendMasterVolume();
+                }
+            }
+        }
+
+        /// <summary>マスター音量（%）の Universal Master Volume の SysEx（値は 14 ビット。100% で最大の 16383）。</summary>
+        public static byte[] MasterVolumeMessage(int percent)
+        {
+            int value = (int)Math.Round(Math.Max(MinMasterVolume, Math.Min(MaxMasterVolume, percent)) * 16383 / (double)MaxMasterVolume);
+            return new byte[] { 0xF0, 0x7F, 0x7F, 0x04, 0x01, (byte)(value & 0x7F), (byte)(value >> 7), 0xF7 };
+        }
+
+        /// <summary>反映済みのマスター音量を送る。</summary>
+        private void SendMasterVolume()
+        {
+            _output?.SendLongMessage(MasterVolumeMessage(_appliedMasterVolume));
+        }
+
+        /// <summary>
+        /// 音源のマスター音量を 100%（最大）に戻す（下げていた場合だけ送る）。アプリを終了するときと、出力デバイスを切り替えるときに、
+        /// 音源（外部音源など）を下げたまま残さないために呼ぶ。設定の値（<see cref="MasterVolume"/>）は変えない。
+        /// </summary>
+        private void RestoreMasterVolume()
+        {
+            if (_output != null && _appliedMasterVolume != MaxMasterVolume)
+            {
+                _output.SendLongMessage(MasterVolumeMessage(MaxMasterVolume));
+            }
+        }
+
+        /// <summary>リセットで音源のマスター音量が最大に戻った後に呼ぶ。100% 以外にしていれば送り直す。</summary>
+        private void SendMasterVolumeIfAdjusted()
+        {
+            if (_appliedMasterVolume != MaxMasterVolume)
+            {
+                SendMasterVolume();
+            }
+        }
+
+        /// <summary>
+        /// マスター音量の変更と、曲中のリセットの後の送り直しを反映する（再生スレッドで呼ぶ）。
+        /// </summary>
+        private void ApplyMasterVolume()
+        {
+            int requested = _masterVolume;
+            if (requested != _appliedMasterVolume)
+            {
+                _appliedMasterVolume = requested;
+                SendMasterVolume();
+            }
+            if (_masterVolumeResendRequested)
+            {
+                // 手動のリセットの後。音源がリセットを終えるのを待ってから送る
+                _masterVolumeResendRequested = false;
+                _masterVolumeResendAt = _clock.Elapsed + TimeSpan.FromMilliseconds(MidiReset.WaitMilliseconds + 10);
+            }
+            if (_masterVolumeResendAt.HasValue && _clock.Elapsed >= _masterVolumeResendAt.Value)
+            {
+                _masterVolumeResendAt = null;
+                SendMasterVolumeIfAdjusted();
+            }
+        }
+
         /// <summary>A-B 区間ループの開始位置。ループしていなければ null。</summary>
         public TimeSpan? LoopStart => _loop?.Start;
 
@@ -285,11 +382,17 @@ namespace KMidiPlayer.Midi
             bool wasPlaying = IsPlaying;
             StopThread();
             ReleaseManualNotes(); // 古いデバイスで鳴らしたままにしない
+            RestoreMasterVolume(); // 古いデバイスのマスター音量を、下げたまま残さない
             _output = output;
             _sysExSentCount = 0; // 新しいデバイスには、まだ曲の SysEx を送っていない
+            _appliedMasterVolume = _masterVolume;
             if (wasPlaying && _output != null)
             {
-                StartThread();
+                StartThread(); // マスター音量も送る
+            }
+            else
+            {
+                SendMasterVolume(); // 新しいデバイスにも、すぐに効かせる（前に下げたまま残っていても戻るよう、100% でも送る）
             }
         }
 
@@ -429,6 +532,21 @@ namespace KMidiPlayer.Midi
             _output.SendLongMessage(message);
             ResetControllerState();
             SendAdjustedVolumes(); // リセットで曲どおりの音量に戻るので、倍率を掛け直す
+
+            // マスター音量も最大に戻るので、リセットが終わるのを待ってから送り直す。
+            // 再生中は再生スレッドに頼む（画面を止めないため）。止まっているときだけ、ここで待って送る
+            if (_masterVolume != MaxMasterVolume)
+            {
+                if (IsPlaying)
+                {
+                    _masterVolumeResendRequested = true;
+                }
+                else
+                {
+                    Thread.Sleep(MidiReset.WaitMilliseconds);
+                    _output.SendLongMessage(MasterVolumeMessage(_masterVolume));
+                }
+            }
         }
 
         // ---- 鍵盤のクリック ----
@@ -681,6 +799,7 @@ namespace KMidiPlayer.Midi
         public void Dispose()
         {
             StopThread();
+            RestoreMasterVolume(); // アプリを終了した後も、音源を下げたまま残さない
         }
 
         private void UpdateAudibleMask()
@@ -718,6 +837,9 @@ namespace KMidiPlayer.Midi
 
         private void StartThread()
         {
+            _appliedMasterVolume = _masterVolume;
+            _masterVolumeResendAt = null;
+            _masterVolumeResendRequested = false; // PrepareOutputState で送る
             PrepareOutputState(_nextIndex);
             RebuildControllerState(_nextIndex);
             Array.Copy(_channelVolumes, _appliedChannelVolumes, ChannelCount);
@@ -765,6 +887,18 @@ namespace KMidiPlayer.Midi
             // 再生スレッドが反映する前に止めた場合に備える（音は反映済みの送信先で止めてから）
             Array.Copy(_outputChannels, _appliedOutputChannels, ChannelCount);
             ApplyChannelVolumes();
+            if (_masterVolume != _appliedMasterVolume)
+            {
+                _appliedMasterVolume = _masterVolume;
+                SendMasterVolume();
+            }
+            else if (_masterVolumeResendAt.HasValue || _masterVolumeResendRequested)
+            {
+                // 曲中のリセットの後の送り直しを待っている間に止めた
+                SendMasterVolumeIfAdjusted();
+            }
+            _masterVolumeResendAt = null;
+            _masterVolumeResendRequested = false;
         }
 
         private void PlaybackLoop()
@@ -781,6 +915,7 @@ namespace KMidiPlayer.Midi
                     ApplyAudibleMask();
                     ApplyOutputChannels();
                     ApplyChannelVolumes();
+                    ApplyMasterVolume();
 
                     TimeSpan now = CurrentSongTime();
 
@@ -883,6 +1018,9 @@ namespace KMidiPlayer.Midi
                 MidiChaser.Chase(_output, _song.Events, index, _sysExSentCount, _appliedOutputChannels, _blockedControllers);
                 _sysExSentCount = Math.Max(_sysExSentCount, index);
             }
+
+            // リセット（自動リセットや、送り直した曲のリセット）で、音源のマスター音量は最大に戻っている
+            SendMasterVolumeIfAdjusted();
         }
 
         private void SendAutoReset()
@@ -1011,6 +1149,9 @@ namespace KMidiPlayer.Midi
                     {
                         ResetControllerState();
                         SendAdjustedVolumes();
+
+                        // マスター音量は、音源がリセットを終えてから送り直す（すぐに送ると、リセット中で受け取られないことがある）
+                        _masterVolumeResendAt = _clock.Elapsed + TimeSpan.FromMilliseconds(MidiReset.WaitMilliseconds + 10);
                     }
                     break;
             }

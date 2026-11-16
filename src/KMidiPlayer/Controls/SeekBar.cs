@@ -13,8 +13,8 @@ namespace KMidiPlayer.Controls
     /// </summary>
     public class SeekBar : Control
     {
-        private const int TrackHeight = 4;
-        private const int ThumbRadius = 8;
+        private int TrackHeight => UiScale.Scale(this, 4);
+        private int ThumbRadius => UiScale.Scale(this, 8);
 
         private static readonly Color LoopColor = Color.FromArgb(224, 112, 32);
 

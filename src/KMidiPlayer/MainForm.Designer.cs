@@ -67,7 +67,6 @@ namespace KMidiPlayer
             this.pianoRollMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tempoStatusLabel = new System.Windows.Forms.ToolStripStatusLabel();
             this.settingsMenuSeparator2 = new System.Windows.Forms.ToolStripSeparator();
-            this.levelMeterSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.preferencesMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -79,6 +78,8 @@ namespace KMidiPlayer
             this.pianoRollButton = new KMidiPlayer.Controls.FlatToggleButton();
             this.seekBar = new KMidiPlayer.Controls.SeekBar();
             this.timeLabel = new System.Windows.Forms.Label();
+            this.volumeButton = new KMidiPlayer.Controls.FlatButton();
+            this.volumeSlider = new KMidiPlayer.Controls.FlatSlider();
             this.tempoLabel = new System.Windows.Forms.Label();
             this.tempoUpDown = new KMidiPlayer.Controls.StepNumericUpDown();
             this.tempoUnitLabel = new System.Windows.Forms.Label();
@@ -393,7 +394,6 @@ namespace KMidiPlayer
             this.resetTempoKeyPerSongMenuItem,
             this.skipSilenceMenuItem,
             this.settingsMenuSeparator2,
-            this.levelMeterSettingsMenuItem,
             this.preferencesMenuItem});
             this.settingsMenuItem.Name = "settingsMenuItem";
             this.settingsMenuItem.Size = new System.Drawing.Size(57, 20);
@@ -444,13 +444,6 @@ namespace KMidiPlayer
             this.settingsMenuSeparator2.Name = "settingsMenuSeparator2";
             this.settingsMenuSeparator2.Size = new System.Drawing.Size(272, 6);
             //
-            // levelMeterSettingsMenuItem
-            //
-            this.levelMeterSettingsMenuItem.Name = "levelMeterSettingsMenuItem";
-            this.levelMeterSettingsMenuItem.Size = new System.Drawing.Size(275, 22);
-            this.levelMeterSettingsMenuItem.Text = "レベルメーターの設定(&M)...";
-            this.levelMeterSettingsMenuItem.Click += new System.EventHandler(this.levelMeterSettingsMenuItem_Click);
-            //
             // preferencesMenuItem
             //
             this.preferencesMenuItem.Name = "preferencesMenuItem";
@@ -482,6 +475,8 @@ namespace KMidiPlayer
             this.controlPanel.Controls.Add(this.pianoRollButton);
             this.controlPanel.Controls.Add(this.seekBar);
             this.controlPanel.Controls.Add(this.timeLabel);
+            this.controlPanel.Controls.Add(this.volumeButton);
+            this.controlPanel.Controls.Add(this.volumeSlider);
             this.controlPanel.Controls.Add(this.tempoLabel);
             this.controlPanel.Controls.Add(this.tempoUpDown);
             this.controlPanel.Controls.Add(this.tempoUnitLabel);
@@ -569,25 +564,45 @@ namespace KMidiPlayer
             | System.Windows.Forms.AnchorStyles.Right)));
             this.seekBar.Location = new System.Drawing.Point(216, 13);
             this.seekBar.Name = "seekBar";
-            this.seekBar.Size = new System.Drawing.Size(604, 20);
+            this.seekBar.Size = new System.Drawing.Size(476, 20);
             this.seekBar.TabIndex = 4;
             this.seekBar.SeekRequested += new System.EventHandler(this.seekBar_SeekRequested);
             // 
             // timeLabel
             // 
             this.timeLabel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.timeLabel.Location = new System.Drawing.Point(828, 8);
+            this.timeLabel.Location = new System.Drawing.Point(700, 8);
             this.timeLabel.Name = "timeLabel";
             this.timeLabel.Size = new System.Drawing.Size(108, 30);
             this.timeLabel.TabIndex = 5;
             this.timeLabel.Text = "00:00 / 00:00";
             this.timeLabel.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            //
+            // volumeButton
+            //
+            this.volumeButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.volumeButton.Font = new System.Drawing.Font("Segoe MDL2 Assets", 11.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.volumeButton.Location = new System.Drawing.Point(814, 8);
+            this.volumeButton.Name = "volumeButton";
+            this.volumeButton.Size = new System.Drawing.Size(30, 30);
+            this.volumeButton.TabIndex = 23;
+            this.volumeButton.Kind = KMidiPlayer.Controls.FlatButtonKind.Subtle;
+            this.volumeButton.Click += new System.EventHandler(this.volumeButton_Click);
+            //
+            // volumeSlider
+            //
+            this.volumeSlider.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.volumeSlider.Location = new System.Drawing.Point(846, 12);
+            this.volumeSlider.Name = "volumeSlider";
+            this.volumeSlider.Size = new System.Drawing.Size(90, 22);
+            this.volumeSlider.TabIndex = 24;
+            this.volumeSlider.ValueChanged += new System.EventHandler(this.volumeSlider_ValueChanged);
             // 
             // tempoLabel
             // 
-            this.tempoLabel.Location = new System.Drawing.Point(8, 45);
+            this.tempoLabel.Location = new System.Drawing.Point(6, 45);
             this.tempoLabel.Name = "tempoLabel";
-            this.tempoLabel.Size = new System.Drawing.Size(44, 20);
+            this.tempoLabel.Size = new System.Drawing.Size(47, 20);
             this.tempoLabel.TabIndex = 6;
             this.tempoLabel.Text = "テンポ:";
             this.tempoLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -709,9 +724,9 @@ namespace KMidiPlayer
             //
             // ratingFilterLabel
             //
-            this.ratingFilterLabel.Location = new System.Drawing.Point(450, 45);
+            this.ratingFilterLabel.Location = new System.Drawing.Point(444, 45);
             this.ratingFilterLabel.Name = "ratingFilterLabel";
-            this.ratingFilterLabel.Size = new System.Drawing.Size(40, 20);
+            this.ratingFilterLabel.Size = new System.Drawing.Size(46, 20);
             this.ratingFilterLabel.TabIndex = 15;
             this.ratingFilterLabel.Text = "評価:";
             this.ratingFilterLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -1107,7 +1122,6 @@ namespace KMidiPlayer
         private System.Windows.Forms.ToolStripMenuItem pianoRollMenuItem;
         private System.Windows.Forms.ToolStripStatusLabel tempoStatusLabel;
         private System.Windows.Forms.ToolStripSeparator settingsMenuSeparator2;
-        private System.Windows.Forms.ToolStripMenuItem levelMeterSettingsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem preferencesMenuItem;
         private System.Windows.Forms.ToolStripMenuItem helpMenuItem;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem;
@@ -1119,6 +1133,8 @@ namespace KMidiPlayer
         private KMidiPlayer.Controls.FlatToggleButton pianoRollButton;
         private KMidiPlayer.Controls.SeekBar seekBar;
         private System.Windows.Forms.Label timeLabel;
+        private KMidiPlayer.Controls.FlatButton volumeButton;
+        private KMidiPlayer.Controls.FlatSlider volumeSlider;
         private System.Windows.Forms.Label tempoLabel;
         private KMidiPlayer.Controls.StepNumericUpDown tempoUpDown;
         private System.Windows.Forms.Label tempoUnitLabel;

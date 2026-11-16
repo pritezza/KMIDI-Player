@@ -43,7 +43,7 @@ namespace KMidiPlayer.Controls
         private const int DragThreshold = 3;
 
         /// <summary>小節番号を書く最小の間隔（px）。これより詰まるときは間引く。</summary>
-        private const int MinBarLabelSpacing = 36;
+        private int MinBarLabelSpacing => UiScale.Scale(this, 36);
 
         // エフェクトの強さ（0 = なし、1～5）ごとの、光と火花を出しておく時間（曲の上の秒）、1 つのノートで飛ばす火花の数、大きさの倍率
         private static readonly double[] EffectSecondsByLevel = { 0, 0.4, 0.5, 0.6, 0.7, 0.85 };

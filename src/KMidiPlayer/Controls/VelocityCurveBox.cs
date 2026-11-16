@@ -20,7 +20,7 @@ namespace KMidiPlayer.Controls
         private const int DragStep = 3;
 
         /// <summary>右側の数値の欄の幅。</summary>
-        private const int ValueWidth = 26;
+        private int ValueWidth => UiScale.Scale(this, 26);
 
         private int _value;
 

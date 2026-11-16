@@ -14,9 +14,26 @@ namespace KMidiPlayer.Controls
         public const int Padding = 4;
 
         /// <summary>
-        /// 星 1 つ分の幅。「★」は代わりのフォントで描かれて幅が測りにくいので、全角 1 文字分（フォントの高さ）で並べる。
+        /// 星 1 つ分の幅。「★」は代わりのフォントで描かれて幅が測りにくいので、全角 1 文字分（フォントの大きさを px にしたもの）で並べる。
         /// </summary>
-        public static int StarWidth(Font font) => font.Height + 2;
+        /// <remarks>
+        /// フォントの行の高さ（Font.Height）はフォントの種類で違う（Yu Gothic UI は MS UI Gothic より高い）ので、
+        /// 大きさ（pt）から求める。こうすると、フォントを替えても星の並びの幅は変わらない。
+        /// </remarks>
+        public static int StarWidth(Font font) => (int)Math.Round(font.SizeInPoints * ScreenDpi / 72f) + 2;
+
+        /// <summary>画面の DPI（縦）。</summary>
+        private static float ScreenDpi => _screenDpi > 0 ? _screenDpi : (_screenDpi = MeasureScreenDpi());
+
+        private static float _screenDpi;
+
+        private static float MeasureScreenDpi()
+        {
+            using (Graphics g = Graphics.FromHwnd(IntPtr.Zero))
+            {
+                return g.DpiY;
+            }
+        }
 
         /// <summary>星 5 つ（左右の余白を含む）の幅。</summary>
         public static int TotalWidth(Font font) => Padding * 2 + StarWidth(font) * PlaylistItem.MaxRating;

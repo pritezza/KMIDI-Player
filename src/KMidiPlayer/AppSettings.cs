@@ -50,6 +50,15 @@ namespace KMidiPlayer
         /// <summary>チャンネルパネルに、曲の中でノートを鳴らすチャンネルだけを表示するかどうか。</summary>
         public bool ShowUsedChannelsOnly { get; set; } = true;
 
+        /// <summary>チャンネルパネルに、音色名を表示するかどうか。</summary>
+        public bool ShowInstrumentNames { get; set; }
+
+        /// <summary>チャンネルパネルの CH・M・S の列（音色名の幅）を、初期の幅から広げた分（100%・96 DPI のときの px）。</summary>
+        public int ChannelNameColumnExtraWidth { get; set; }
+
+        /// <summary>音色名に使う音源定義ファイル（音源定義のフォルダの中のファイル名）。</summary>
+        public string InstrumentDefinitionFile { get; set; } = InstrumentLibrary.BuiltInFileName;
+
         /// <summary>終了時に再生していた曲のファイルパス。無ければ null。</summary>
         public string LastSongPath { get; set; }
 
@@ -65,6 +74,9 @@ namespace KMidiPlayer
         /// <summary>お気に入りの評価のフィルター（0 = すべて表示、1～5 = その評価以上だけ表示）。</summary>
         public int RatingFilter { get; set; }
 
+        /// <summary>音源のマスター音量（0～100%）。</summary>
+        public int MasterVolume { get; set; } = MidiSequencer.MaxMasterVolume;
+
         /// <summary>ベロシティカーブ（-12～+12、0 で曲のまま）。</summary>
         public int VelocityCurve { get; set; }
 
@@ -72,10 +84,14 @@ namespace KMidiPlayer
         public LevelMeterSettings LevelMeter { get; set; } = new LevelMeterSettings();
 
         /// <summary>画面の表示言語。</summary>
-        public UiLanguage Language { get; set; } = UiLanguage.Japanese;
+        /// <remarks>初めて起動したとき（設定ファイルが無いとき）は英語（海外の利用者が日本語の画面で戸惑わないように）。</remarks>
+        public UiLanguage Language { get; set; } = UiLanguage.English;
 
         /// <summary>画面の配色（ライト / ダーク）。</summary>
         public ThemeKind ColorTheme { get; set; } = ThemeKind.Light;
+
+        /// <summary>画面の拡大（%。UiScale.MinPercent～MaxPercent。文字とそれに合わせた配置の大きさ）。</summary>
+        public int TextSizePercent { get; set; } = UiScale.DefaultPercent;
 
         /// <summary>曲の先頭から再生するときに、最初のノートまでの無音をとばすかどうか。</summary>
         public bool SkipLeadingSilence { get; set; } = true;
@@ -105,6 +121,9 @@ namespace KMidiPlayer
 
         public static string PlaylistFilePath => Path.Combine(DataDirectory, PlaylistFileName);
 
+        /// <summary>音源定義ファイルを置くフォルダ（設定の保存先の中）。</summary>
+        public static string ModulesDirectory => Path.Combine(DataDirectory, InstrumentLibrary.FolderName);
+
         /// <summary>
         /// 設定を読み込む。ファイルが無い、または読めない場合は初期値を返す。
         /// </summary>
@@ -132,6 +151,7 @@ namespace KMidiPlayer
             settings.OutputDeviceName = (string)root.Element("OutputDevice");
             settings.Language = ReadEnum(root, "Language", settings.Language);
             settings.ColorTheme = ReadEnum(root, "Theme", settings.ColorTheme);
+            settings.TextSizePercent = Math.Max(UiScale.MinPercent, Math.Min(UiScale.MaxPercent, ReadInt(root, "TextSize", settings.TextSizePercent)));
             settings.SkipLeadingSilence = ReadBool(root, "SkipLeadingSilence", settings.SkipLeadingSilence);
             settings.TopMost = ReadBool(root, "TopMost", settings.TopMost);
 
@@ -180,6 +200,13 @@ namespace KMidiPlayer
             settings.ChannelPanelHeight = ReadInt(root, "ChannelPanelHeight", 0);
             settings.ChannelPanelVisible = ReadBool(root, "ChannelPanelVisible", settings.ChannelPanelVisible);
             settings.ShowUsedChannelsOnly = ReadBool(root, "ShowUsedChannelsOnly", settings.ShowUsedChannelsOnly);
+            settings.ShowInstrumentNames = ReadBool(root, "ShowInstrumentNames", settings.ShowInstrumentNames);
+            settings.ChannelNameColumnExtraWidth = Math.Max(0, Math.Min(ChannelView.MaxNameColumnExtraWidth, ReadInt(root, "InstrumentNameExtraWidth", 0)));
+            string definitionFile = (string)root.Element("InstrumentDefinition");
+            if (!string.IsNullOrWhiteSpace(definitionFile))
+            {
+                settings.InstrumentDefinitionFile = definitionFile.Trim();
+            }
 
             XElement lastSong = root.Element("LastSong");
             if (lastSong != null)
@@ -192,6 +219,7 @@ namespace KMidiPlayer
             string playlistPath = (string)root.Element("PlaylistPath");
             settings.PlaylistPath = string.IsNullOrEmpty(playlistPath) ? null : playlistPath;
             settings.RatingFilter = Math.Max(0, Math.Min(PlaylistItem.MaxRating, ReadInt(root, "RatingFilter", 0)));
+            settings.MasterVolume = Math.Max(MidiSequencer.MinMasterVolume, Math.Min(MidiSequencer.MaxMasterVolume, ReadInt(root, "MasterVolume", settings.MasterVolume)));
             int velocityCurve = ReadInt(root, "VelocityCurve", 0);
             if (root.Element("VelocityCurve")?.Attribute("Steps") == null)
             {
@@ -243,6 +271,7 @@ namespace KMidiPlayer
             var root = new XElement("KMidiPlayerSettings",
                 new XElement("Language", Language),
                 new XElement("Theme", ColorTheme),
+                new XElement("TextSize", TextSizePercent),
                 new XElement("SkipLeadingSilence", SkipLeadingSilence),
                 new XElement("TopMost", TopMost),
                 new XElement("PianoRoll",
@@ -275,12 +304,16 @@ namespace KMidiPlayer
                 new XElement("ChannelPanelHeight", ChannelPanelHeight),
                 new XElement("ChannelPanelVisible", ChannelPanelVisible),
                 new XElement("ShowUsedChannelsOnly", ShowUsedChannelsOnly),
+                new XElement("ShowInstrumentNames", ShowInstrumentNames),
+                new XElement("InstrumentNameExtraWidth", ChannelNameColumnExtraWidth),
+                new XElement("InstrumentDefinition", InstrumentDefinitionFile ?? InstrumentLibrary.BuiltInFileName),
                 new XElement("ColumnWidths", ColumnWidths == null ? string.Empty : string.Join(",", ColumnWidths)),
                 new XElement("LastSong",
                     new XElement("Path", LastSongPath ?? string.Empty),
                     new XElement("Index", LastSongIndex)),
                 new XElement("PlaylistPath", PlaylistPath ?? string.Empty),
                 new XElement("RatingFilter", RatingFilter),
+                new XElement("MasterVolume", MasterVolume),
                 new XElement("VelocityCurve", new XAttribute("Steps", MidiSequencer.MaxVelocityCurve), VelocityCurve),
                 new XElement("LevelMeter",
                     new XElement("Fps", LevelMeter.FramesPerSecond),

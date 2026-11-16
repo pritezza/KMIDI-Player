@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using KMidiPlayer.Midi;
 
 namespace KMidiPlayer
 {
@@ -17,7 +18,7 @@ namespace KMidiPlayer
     /// </remarks>
     public static class Texts
     {
-        public static UiLanguage Current { get; set; } = UiLanguage.Japanese;
+        public static UiLanguage Current { get; set; } = UiLanguage.English;
 
         private static string T(string japanese, string english)
         {
@@ -50,6 +51,33 @@ namespace KMidiPlayer
         public static string ViewMenu => T("表示(&V)", "&View");
         public static string ChannelPanel => T("チャンネルパネル(&C)", "&Channel Panel");
         public static string UsedChannelsOnly => T("データのあるチャンネルだけ表示(&U)", "Show &Used Channels Only");
+        public static string InstrumentMenu => T("音色名(&I)", "Instrument &Names");
+        public static string InstrumentNames => T("音色名を表示(&S)", "&Show Instrument Names");
+
+        /// <summary>「音色名」のサブメニューの、音源定義の一覧の見出し（選べない項目）。</summary>
+        public static string InstrumentDefinitionHeader => T("音源定義", "Definitions");
+        public static string OpenModulesFolder => T("音源定義のフォルダを開く(&O)", "&Open Definition Folder");
+        public static string NoInstrumentDefinitions => T("（音源定義ファイルがありません）", "(No definition files)");
+
+        public static string InstrumentDefinitionErrorTitle => T("音源定義", "Instrument Definition");
+
+        public static string NotInstrumentDefinition => T(
+            "音源定義ファイル（Domino の形式）ではありません（<ModuleData> がありません）。",
+            "This is not an instrument definition file in the Domino format (no <ModuleData>).");
+
+        public static string InstrumentDefinitionError(string fileName, string message) => T(
+            $"音源定義ファイルを読み込めませんでした。\n\n{fileName}\n{message}",
+            $"Could not load the instrument definition file.\n\n{fileName}\n{message}");
+
+        /// <summary>チャンネルパネルの音色名のツールチップ（名前・プログラム・バンク・音源定義）。</summary>
+        public static string InstrumentTip(string name, InstrumentState state, string moduleName)
+        {
+            string msb = state.BankMsb >= 0 ? state.BankMsb.ToString() : "-";
+            string lsb = state.BankLsb >= 0 ? state.BankLsb.ToString() : "-";
+            return T(
+                $"{name}\nプログラム {state.Program + 1}　バンク MSB {msb}・LSB {lsb}{(state.IsDrum ? "（ドラム）" : "")}\n音源定義: {moduleName}",
+                $"{name}\nProgram {state.Program + 1}  Bank MSB {msb} / LSB {lsb}{(state.IsDrum ? " (drums)" : "")}\nDefinition: {moduleName}");
+        }
 
         // ---- メニュー: 設定 ----
         public static string SettingsMenu => T("設定(&S)", "&Settings");
@@ -173,14 +201,13 @@ namespace KMidiPlayer
         public static string AlwaysOnTop => T("常に手前に表示(&T)", "Always on &Top");
         public static string TempoStatusTip => T("今のテンポ（テンポ欄の % を掛けた実際の速さ）と拍子", "Current tempo (including the tempo % setting) and time signature");
         public static string ResetTempoKeyPerSong => T("曲を切り替えたらテンポとキーを元に戻す(&K)", "Reset Tempo and &Key When the Song Changes");
-        public static string LevelMeterSettings => T("レベルメーターの設定(&M)...", "Level &Meter...");
         public static string Preferences => T("環境設定(&P)...", "&Preferences...");
 
         // ---- メニュー: ヘルプ ----
         public static string HelpMenu => T("ヘルプ(&H)", "&Help");
         public static string About => T("バージョン情報(&A)...", "&About...");
         public static string AboutTitle => T("バージョン情報", "About");
-        public static string AboutText(string version) => T($"KMIDI Player\nバージョン {version}", $"KMIDI Player\nVersion {version}");
+        public static string AboutVersion(string version) => T($"バージョン {version}", $"Version {version}");
 
         // ---- 操作部 ----
         public static string TempoLabel => T("テンポ:", "Tempo:");
@@ -329,6 +356,14 @@ namespace KMidiPlayer
             $"ピッチベンド {bend:+0;-0;0}　モジュレーション {modulation}",
             $"Pitch bend {bend:+0;-0;0}  Modulation {modulation}");
 
+        public static string MasterVolumeTip(int percent) => T(
+            $"音源のマスター音量 {percent}%（ダブルクリックで 100%）",
+            $"Sound module master volume {percent}% (double-click for 100%)");
+
+        public static string MasterVolumeButtonTip(bool muted) => muted
+            ? T("ミュートを解除", "Unmute")
+            : T("ミュート（音源のマスター音量を 0% に）", "Mute (set the master volume to 0%)");
+
         public static string VolumeTip(int percent) => T($"音量 {percent}%（ダブルクリックで 100%）", $"Volume {percent}% (double-click for 100%)");
 
         /// <summary>ペダルのランプのツールチップ（例: 「ソフトペダル（CC67）」）。送らない設定なら、その旨を付ける。</summary>
@@ -351,8 +386,8 @@ namespace KMidiPlayer
         public static string ResetChannelTransposes => T("移調とオクターブをすべて 0 に戻す(&T)", "Reset All &Transpose and Octave to 0");
         public static string ResetChannelVolumes => T("音量をすべて 100% に戻す(&V)", "Reset All &Volumes to 100%");
 
-        // ---- レベルメーターの設定 ----
-        public static string LevelMeterTitle => T("レベルメーターの設定", "Level Meter");
+        // ---- 環境設定: レベルメーター ----
+        public static string LevelMeterSection => T("レベルメーター", "Level meter");
         public static string FpsLabel => T("更新頻度(&F):", "Refresh &rate:");
         public static string FpsUnit => T("fps（1 秒あたりの更新回数）", "fps (updates per second)");
         public static string StyleLabel => T("表示タイプ(&T):", "&Type:");
@@ -372,12 +407,17 @@ namespace KMidiPlayer
 
         // ---- 環境設定 ----
         public static string PreferencesTitle => T("環境設定", "Preferences");
-        public static string LanguageLabel => T("表示言語(&L):", "&Language:");
-        public static string ThemeLabel => T("配色(&T):", "Color &theme:");
+
+        // ---- 表示メニュー: 画面の拡大・配色・表示言語 ----
+        public static string UiScaleMenu => T("画面の拡大(&Z)", "UI &Scale");
+        public static string ThemeMenu => T("配色(&H)", "T&heme");
+
+        /// <summary>表示言語のメニュー。今の言語が読めない人でも見つけられるよう、どちらの言語でも両方を書く。</summary>
+        public static string LanguageMenu => "Language / 言語(&L)";
 
         /// <summary>配色の一覧（ThemeKind の順）。</summary>
         public static string[] Themes => Current == UiLanguage.English ? new[] { "Light", "Dark" } : new[] { "ライト", "ダーク" };
-        public static string BlockedControllersLabel => T("音源に送らない CC(&C):", "&CCs not sent to the device:");
+        public static string BlockedControllersLabel => T("音源に送らない CC(&C)", "&CCs not sent to the device");
         public static string BlockedControllersNote => T("チェックした CC は、曲を再生しても MIDI 音源に送りません（全チャンネル共通）。",
             "Checked CCs in the song are not sent to the MIDI device (all channels).");
         public static string ClearBlockedControllers => T("すべて解除(&A)", "Clear &All");

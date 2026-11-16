@@ -18,9 +18,12 @@ namespace KMidiPlayer.Controls
         private const int WM_PAINT = 0x000F;
         private const int WM_PRINT = 0x0317;
         private const int WM_PRINTCLIENT = 0x0318;
-        private const int ChevronWidth = 20;
+        private int ChevronWidth => UiScale.Scale(this, 20);
 
         private bool _hover;
+
+        /// <summary>100%・96 DPI のときの項目の高さ（px）。0 なら、フォントの大きさから決める。</summary>
+        private int _baseItemHeight;
 
         public FlatComboBox()
         {
@@ -28,6 +31,26 @@ namespace KMidiPlayer.Controls
             DropDownStyle = ComboBoxStyle.DropDownList;
             FlatStyle = FlatStyle.Flat;
             ApplyColors();
+            UpdateItemHeight();
+        }
+
+        /// <summary>
+        /// 100%・96 DPI のときの項目の高さ（px）。0（初期値）なら、フォントの大きさ（pt を px にしたもの）＋ 2。
+        /// 項目の高さ（と、閉じているときのコンボボックスの高さ）は、画面の拡大に合わせてこの高さから決める。
+        /// </summary>
+        /// <remarks>
+        /// 項目を自分で描くコンボボックスの高さは、何もしなければフォントの行の高さで決まる。行の高さはフォントの種類で違う
+        /// （Yu Gothic UI は MS UI Gothic より高い）ので、そのままではフォントを替えただけでコンボボックスが高くなり、周りとそろわなくなる。
+        /// </remarks>
+        [System.ComponentModel.DefaultValue(0)]
+        public int BaseItemHeight
+        {
+            get => _baseItemHeight;
+            set
+            {
+                _baseItemHeight = Math.Max(0, value);
+                UpdateItemHeight();
+            }
         }
 
         public void ApplyTheme()
@@ -102,6 +125,25 @@ namespace KMidiPlayer.Controls
         {
             base.OnLostFocus(e);
             Invalidate();
+        }
+
+        /// <summary>フォント（画面の拡大）が変わったら、項目の高さを合わせ直す。</summary>
+        protected override void OnFontChanged(EventArgs e)
+        {
+            base.OnFontChanged(e);
+            UpdateItemHeight();
+        }
+
+        /// <summary>項目の高さを、<see cref="BaseItemHeight"/>（0 ならフォントの大きさ）と画面の拡大から決め直す。</summary>
+        private void UpdateItemHeight()
+        {
+            int height = _baseItemHeight > 0
+                ? (int)Math.Round(_baseItemHeight * UiScale.Of(this))
+                : (int)Math.Round(Font.SizeInPoints * DeviceDpi / 72f) + 2;
+            if (ItemHeight != height)
+            {
+                ItemHeight = Math.Max(1, height);
+            }
         }
 
         protected override void OnEnabledChanged(EventArgs e)

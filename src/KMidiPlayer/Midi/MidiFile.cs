@@ -107,6 +107,11 @@ namespace KMidiPlayer.Midi
         /// <summary>マーカー（「A メロ」「サビ」など。時間順）。初めて使うときに作る。</summary>
         public IReadOnlyList<TimedText> Markers => _markers ?? (_markers = BuildTexts(MetaMarker));
 
+        private ProgramTimeline _programs;
+
+        /// <summary>各時点の、チャンネルごとの音色（プログラム・バンク）とドラムかどうか。初めて使うときに作る。</summary>
+        public ProgramTimeline Programs => _programs ?? (_programs = new ProgramTimeline(Events));
+
         /// <summary>その種類のメタイベントの文字列を、時間順に集める。</summary>
         private IReadOnlyList<TimedText> BuildTexts(byte metaType)
         {

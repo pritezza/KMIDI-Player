@@ -8,8 +8,8 @@ namespace KMidiPlayer.Controls
     // 横の表示: 横軸を時間・縦軸を音の高さにして、右から左へ流す。再生位置の線は左から 1/3 に固定する
     public partial class PianoRollView
     {
-        private const int KeyboardWidth = 44;
-        private const int RulerHeight = 18;
+        private int KeyboardWidth => UiScale.Scale(this, 44);
+        private int RulerHeight => UiScale.Scale(this, 18);
         private const float PlayheadPosition = 1 / 3f;
 
         private static readonly Color LaneColor = Color.FromArgb(244, 244, 244);
@@ -29,7 +29,7 @@ namespace KMidiPlayer.Controls
             return _position + TimeSpan.FromSeconds((x - PlayheadX) / _pixelsPerSecond);
         }
 
-        private static float YAt(int note, int highest, float rowHeight)
+        private float YAt(int note, int highest, float rowHeight)
         {
             return RulerHeight + (highest - note) * rowHeight;
         }
@@ -57,7 +57,7 @@ namespace KMidiPlayer.Controls
         }
 
         /// <summary>黒鍵の段を薄く塗り、オクターブ（C）ごとに線を引く。</summary>
-        private static void DrawLanes(RollCanvas c, Rectangle roll, int lowest, int highest, float rowHeight)
+        private void DrawLanes(RollCanvas c, Rectangle roll, int lowest, int highest, float rowHeight)
         {
             for (int note = lowest; note <= highest; note++)
             {

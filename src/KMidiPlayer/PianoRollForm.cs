@@ -51,7 +51,17 @@ namespace KMidiPlayer
             Disposed += (sender, e) => _frameClock.Dispose();
             ApplyOptions();
             ApplyTexts();
+            ApplyUiScale();
             ThemeStyler.Apply(this); // ツールバーと右クリックメニュー（ピアノロールの絵は、表示の種類ごとの配色で描く）
+        }
+
+        /// <summary>
+        /// 今の画面の拡大（UiScale.Percent）を、このウィンドウに当てる。作った直後と、表示メニューで拡大を変えたときに呼ぶ。
+        /// </summary>
+        public void ApplyUiScale()
+        {
+            UiScale.Apply(this);
+            BuildCommands(); // 倍率のスライダーなど、大きさを指定して作る項目を作り直す
         }
 
         /// <summary>ピアノロールか全体図で、再生位置の移動が求められたときに発生する。</summary>
@@ -300,6 +310,7 @@ namespace KMidiPlayer
             fullScreenItem.ShortcutKeyDisplayString = "F11";
             viewMenu.Items.Add(fullScreenItem);
 
+            UiScale.ApplyMenus(this); // 作り直したメニュー（ドロップダウン）も、画面の拡大に合わせる
             RefreshCommands();
         }
 
@@ -316,13 +327,19 @@ namespace KMidiPlayer
                 ResetValue = PianoRollView.DefaultPixelsPerSecond,
                 Step = PianoRollView.ZoomStep,
                 Value = pianoRollView.PixelsPerSecond,
-                Size = new Size(ZoomSliderWidth, 22),
+                Size = new Size(UiScale.Scale(this, ZoomSliderWidth), UiScale.Scale(this, 22)),
             };
             slider.ValueChanged += (sender, e) => pianoRollView.PixelsPerSecond = slider.Value;
             _zoomSlider = slider;
 
-            var valueLabel = new ToolStripLabel { Alignment = ToolStripItemAlignment.Right, AutoSize = false, Width = 44, TextAlign = ContentAlignment.MiddleRight };
-            var host = new ToolStripControlHost(slider) { Alignment = ToolStripItemAlignment.Right, AutoSize = false, Width = ZoomSliderWidth, ToolTipText = Texts.PianoRollZoomTip };
+            var valueLabel = new ToolStripLabel
+            {
+                Alignment = ToolStripItemAlignment.Right,
+                AutoSize = false,
+                Size = new Size(UiScale.Scale(this, 44), slider.Height),
+                TextAlign = ContentAlignment.MiddleRight,
+            };
+            var host = new ToolStripControlHost(slider) { Alignment = ToolStripItemAlignment.Right, AutoSize = false, Width = UiScale.Scale(this, ZoomSliderWidth), ToolTipText = Texts.PianoRollZoomTip };
             var caption = new ToolStripLabel(Texts.PianoRollZoomLabel) { Alignment = ToolStripItemAlignment.Right };
             _zoomLabel = valueLabel;
             toolStrip.Items.Add(new ToolStripSeparator { Alignment = ToolStripItemAlignment.Right });

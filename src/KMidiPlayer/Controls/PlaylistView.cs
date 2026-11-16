@@ -27,7 +27,7 @@ namespace KMidiPlayer.Controls
         private const int LVM_GETHEADER = 0x101F;
 
         /// <summary>再生状態の印（▶ ❚❚ ■）の大きさ。</summary>
-        private const int MarkSize = 9;
+        private int MarkSize => UiScale.Scale(this, 9);
 
         private ListViewItem _currentItem;
         private PlaybackState _currentState;

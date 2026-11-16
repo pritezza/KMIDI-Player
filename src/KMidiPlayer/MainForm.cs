@@ -39,6 +39,10 @@ namespace KMidiPlayer
         private const string PlayGlyph = "\uE768";
         private const string PauseGlyph = "\uE769";
 
+        /// <summary>\u30DE\u30B9\u30BF\u30FC\u97F3\u91CF\u306E\u30DC\u30BF\u30F3\u306E\u8A18\u53F7\uFF08Segoe MDL2 Assets \u30D5\u30A9\u30F3\u30C8\uFF09\u3002\u30DF\u30E5\u30FC\u30C8\u3001\u5C0F\u30FB\u4E2D\u30FB\u5927\u3002</summary>
+        private const string MuteGlyph = "\uE74F";
+        private static readonly string[] VolumeGlyphs = { "\uE993", "\uE994", "\uE995" };
+
         /// <summary>ドラッグ中、リストの上端・下端からこの距離に入ると自動でスクロールする。</summary>
         private const int DragScrollMargin = 16;
 
@@ -55,7 +59,8 @@ namespace KMidiPlayer
 
         private readonly MidiSequencer _sequencer = new MidiSequencer();
         private readonly AppSettings _settings = AppSettings.Load();
-        private readonly Font _currentItemFont;
+        /// <summary>再生中の曲の行の太字のフォント（画面の拡大が変わったら作り直す）。</summary>
+        private Font _currentItemFont;
         private readonly Random _random = new Random();
 
         /// <summary>再生した曲の履歴（末尾が現在の曲）。シャッフル中の「前の曲」で使う。</summary>
@@ -101,6 +106,24 @@ namespace KMidiPlayer
         /// <summary>アプリを終了している最中か。</summary>
         private bool _closing;
 
+        /// <summary>この画面に当てている画面の拡大（%）。一覧の列の幅を、変えた比率で広げるのに使う。</summary>
+        private int _appliedTextSize = UiScale.DefaultPercent;
+
+        /// <summary>マスター音量のボタンでミュートする前の音量（%）。ミュートを解除するときに戻す。</summary>
+        private int _volumeBeforeMute = MidiSequencer.MaxMasterVolume;
+
+        /// <summary>チャンネルパネルの音色名に使う音源定義。</summary>
+        private readonly InstrumentLibrary _instruments = new InstrumentLibrary(AppSettings.ModulesDirectory);
+
+        // 表示メニューの「音色名を表示」と「音源定義」（音源定義の一覧は、開くたびにフォルダから作り直す）
+        private readonly ToolStripMenuItem _instrumentMenuItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _instrumentNamesMenuItem = new ToolStripMenuItem { CheckOnClick = true };
+
+        // 表示メニューの「画面の拡大」「配色」「Language / 言語」
+        private readonly ToolStripMenuItem _textSizeMenuItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _themeMenuItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _languageMenuItem = new ToolStripMenuItem();
+
         /// <summary>デザイナー用。</summary>
         public MainForm()
             : this(null)
@@ -119,6 +142,9 @@ namespace KMidiPlayer
             _currentItemFont = new Font(playlistView.Font, FontStyle.Bold);
             playlistView.Controls.Add(_insertionLine);
             _sequencer.SongEnded += Sequencer_SongEnded;
+            CreateInstrumentMenus();
+            CreateAppearanceMenus();
+            ArrangeViewMenu();
 
             // 画面の文字列は、デザイナーの日本語を、設定の言語のものに置き換える
             Texts.Current = _settings.Language;
@@ -128,6 +154,8 @@ namespace KMidiPlayer
             {
                 ThemeStyler.SetMuted(label);
             }
+            UiScale.Percent = _settings.TextSizePercent;
+            ApplyUiScale(); // 保存した位置・大きさ・列の幅を戻す前に当てる
             ApplyTheme();
 
             resetComboBox.SelectedIndex = (int)_settings.ResetType;
@@ -137,6 +165,13 @@ namespace KMidiPlayer
             topMostMenuItem.Checked = _settings.TopMost;
             ratingFilterBox.Value = _settings.RatingFilter;
             velocityCurveBox.Value = _settings.VelocityCurve;
+            volumeSlider.Minimum = MidiSequencer.MinMasterVolume;
+            volumeSlider.Maximum = MidiSequencer.MaxMasterVolume;
+            volumeSlider.ResetValue = MidiSequencer.MaxMasterVolume;
+            volumeSlider.Step = 5;
+            volumeSlider.Value = _settings.MasterVolume;
+            _sequencer.MasterVolume = _settings.MasterVolume; // 出力デバイスを開いたときに送る
+            UpdateVolumeDisplay();
             foreach (int controller in _settings.BlockedControllers)
             {
                 _sequencer.SetControllerBlocked(controller, true);
@@ -177,6 +212,9 @@ namespace KMidiPlayer
             viewMenuItem.Text = Texts.ViewMenu;
             channelPanelMenuItem.Text = Texts.ChannelPanel;
             usedChannelsOnlyMenuItem.Text = Texts.UsedChannelsOnly;
+            _instrumentMenuItem.Text = Texts.InstrumentMenu;
+            _instrumentNamesMenuItem.Text = Texts.InstrumentNames;
+            ApplyAppearanceMenuTexts();
 
             settingsMenuItem.Text = Texts.SettingsMenu;
             outputDeviceMenuItem.Text = Texts.OutputDevice;
@@ -186,8 +224,8 @@ namespace KMidiPlayer
             topMostMenuItem.Text = Texts.AlwaysOnTop;
             pianoRollMenuItem.Text = Texts.PianoRollMenu;
             toolTip.SetToolTip(pianoRollButton, Texts.PianoRollButtonTip);
+            UpdateVolumeDisplay();
             _pianoRoll?.ApplyTexts();
-            levelMeterSettingsMenuItem.Text = Texts.LevelMeterSettings;
             preferencesMenuItem.Text = Texts.Preferences;
 
             helpMenuItem.Text = Texts.HelpMenu;
@@ -257,19 +295,19 @@ namespace KMidiPlayer
             }
         }
 
+        /// <summary>
+        /// 環境設定（レベルメーター・音源に送らない CC）。レベルメーターは、画面で変えている間はすぐに反映し、キャンセルされたら元に戻す。
+        /// </summary>
         private void preferencesMenuItem_Click(object sender, EventArgs e)
         {
-            using (var dialog = new PreferencesForm(Texts.Current, Theme.Current.Kind, GetBlockedControllers()))
+            LevelMeterSettings originalMeter = channelView.MeterSettings;
+            using (var dialog = new PreferencesForm(originalMeter, ApplyMeterSettings, GetBlockedControllers()))
             {
-                if (dialog.ShowDialog(this) != DialogResult.OK)
+                bool ok = dialog.ShowDialog(this) == DialogResult.OK;
+                ApplyMeterSettings(ok ? dialog.MeterSettings : originalMeter);
+                if (!ok)
                 {
                     return;
-                }
-
-                if (dialog.Theme != Theme.Current.Kind)
-                {
-                    ThemeStyler.SetTheme(dialog.Theme); // 開いている画面（ピアノロールも）に反映する
-                    ApplyTheme();
                 }
 
                 bool[] blocked = dialog.BlockedControllers;
@@ -277,17 +315,156 @@ namespace KMidiPlayer
                 {
                     _sequencer.SetControllerBlocked(controller, blocked[controller]);
                 }
-                if (dialog.Language != Texts.Current)
-                {
-                    Texts.Current = dialog.Language;
-                    ApplyTexts();
-                }
                 channelView.UpdateFrom(_sequencer);
             }
         }
 
+        // ---- 表示メニューの、画面の拡大・配色・表示言語 ----
+
         /// <summary>
-        /// 今の配色（<see cref="Theme.Current"/>）を、この画面に当てる。起動時と、環境設定で配色を変えたときに呼ぶ。
+        /// 「画面の拡大」「配色」「Language / 言語」のサブメニューを用意する（表示メニューへの配置は <see cref="ArrangeViewMenu"/>）。
+        /// 項目の文字列は <see cref="ApplyTexts"/>、チェックは表示メニューを開いたときに設定する。
+        /// </summary>
+        private void CreateAppearanceMenus()
+        {
+            foreach (int percent in UiScale.Choices)
+            {
+                var item = new ToolStripMenuItem(percent + "%") { Tag = percent };
+                item.Click += textSizeItem_Click;
+                _textSizeMenuItem.DropDownItems.Add(item);
+            }
+
+            foreach (ThemeKind kind in new[] { ThemeKind.Light, ThemeKind.Dark })
+            {
+                var item = new ToolStripMenuItem { Tag = kind };
+                item.Click += themeItem_Click;
+                _themeMenuItem.DropDownItems.Add(item);
+            }
+
+            string[] languages = Texts.Languages; // それぞれの言語で書いた名前（UiLanguage の順）
+            for (int i = 0; i < languages.Length; i++)
+            {
+                var item = new ToolStripMenuItem(languages[i]) { Tag = (UiLanguage)i };
+                item.Click += languageItem_Click;
+                _languageMenuItem.DropDownItems.Add(item);
+            }
+
+            viewMenuItem.DropDownOpening += viewMenuItem_DropDownOpening;
+        }
+
+        /// <summary>
+        /// 表示メニューの項目を、役割ごとに区切って並べる。
+        /// 開くウィンドウ・パネル / チャンネルパネルの表示内容 / 見た目 / ウィンドウの動き、の順。
+        /// </summary>
+        private void ArrangeViewMenu()
+        {
+            ToolStripItemCollection items = viewMenuItem.DropDownItems;
+            items.Clear();
+            items.AddRange(new ToolStripItem[]
+            {
+                pianoRollMenuItem,
+                channelPanelMenuItem,
+                new ToolStripSeparator(),
+                usedChannelsOnlyMenuItem,
+                _instrumentMenuItem,
+                new ToolStripSeparator(),
+                _textSizeMenuItem,
+                _themeMenuItem,
+                _languageMenuItem,
+                new ToolStripSeparator(),
+                topMostMenuItem,
+            });
+        }
+
+        /// <summary>画面の拡大・配色・表示言語のサブメニューの文字列を、表示言語に合わせる。</summary>
+        private void ApplyAppearanceMenuTexts()
+        {
+            _textSizeMenuItem.Text = Texts.UiScaleMenu;
+            _themeMenuItem.Text = Texts.ThemeMenu;
+            _languageMenuItem.Text = Texts.LanguageMenu; // どの言語でも同じ（今の言語が読めない人でも見つけられるように）
+            string[] themes = Texts.Themes;
+            foreach (ToolStripMenuItem item in _themeMenuItem.DropDownItems)
+            {
+                item.Text = themes[(int)(ThemeKind)item.Tag];
+            }
+        }
+
+        /// <summary>表示メニューを開いたときに、今の画面の拡大・配色・表示言語にチェックを付ける。</summary>
+        private void viewMenuItem_DropDownOpening(object sender, EventArgs e)
+        {
+            foreach (ToolStripMenuItem item in _textSizeMenuItem.DropDownItems)
+            {
+                item.Checked = (int)item.Tag == UiScale.Percent;
+            }
+            foreach (ToolStripMenuItem item in _themeMenuItem.DropDownItems)
+            {
+                item.Checked = (ThemeKind)item.Tag == Theme.Current.Kind;
+            }
+            foreach (ToolStripMenuItem item in _languageMenuItem.DropDownItems)
+            {
+                item.Checked = (UiLanguage)item.Tag == Texts.Current;
+            }
+        }
+
+        private void textSizeItem_Click(object sender, EventArgs e)
+        {
+            int percent = (int)((ToolStripItem)sender).Tag;
+            if (percent == UiScale.Percent)
+            {
+                return;
+            }
+            UiScale.Percent = percent;
+            ApplyUiScale();
+            _pianoRoll?.ApplyUiScale();
+        }
+
+        private void themeItem_Click(object sender, EventArgs e)
+        {
+            var kind = (ThemeKind)((ToolStripItem)sender).Tag;
+            if (kind == Theme.Current.Kind)
+            {
+                return;
+            }
+            ThemeStyler.SetTheme(kind); // 開いている画面（ピアノロールも）に反映する
+            ApplyTheme();
+        }
+
+        private void languageItem_Click(object sender, EventArgs e)
+        {
+            var language = (UiLanguage)((ToolStripItem)sender).Tag;
+            if (language == Texts.Current)
+            {
+                return;
+            }
+            Texts.Current = language;
+            ApplyTexts();
+            channelView.UpdateFrom(_sequencer);
+        }
+
+        /// <summary>
+        /// 今の画面の拡大（UiScale.Percent）を、この画面に当てる。起動時と、表示メニューで拡大を変えたときに呼ぶ。
+        /// 一覧の列の幅は自動では広がらないので、変えた比率で広げる（評価の列は、星が収まる幅にする）。
+        /// </summary>
+        private void ApplyUiScale()
+        {
+            UiScale.Apply(this);
+            UiScale.CenterVertically(tempoLabel, tempoUpDown, keyUpDown);
+            float ratio = UiScale.Percent / (float)_appliedTextSize;
+            foreach (ColumnHeader column in playlistView.Columns)
+            {
+                column.Width = column == ratingColumn ? playlistView.RatingColumnWidth : (int)Math.Round(column.Width * ratio);
+            }
+            _appliedTextSize = UiScale.Percent;
+
+            // 一覧の行には、行ごとにフォントを設定している（再生中の曲は太字）ので、新しい大きさのフォントに付け直す
+            Font oldCurrentItemFont = _currentItemFont;
+            _currentItemFont = new Font(playlistView.Font, FontStyle.Bold);
+            RefreshListItems();
+            oldCurrentItemFont?.Dispose();
+        }
+
+        /// <summary>
+        /// 今の配色（<see cref="Theme.Current"/>）を、この画面に当てる。起動時と、表示メニューで配色を変えたときに呼ぶ。
         /// </summary>
         private void ApplyTheme()
         {
@@ -505,16 +682,6 @@ namespace KMidiPlayer
         }
 
         // ---- レベルメーターの設定 ----
-
-        private void levelMeterSettingsMenuItem_Click(object sender, EventArgs e)
-        {
-            LevelMeterSettings original = channelView.MeterSettings;
-            using (var dialog = new LevelMeterSettingsForm(original, ApplyMeterSettings))
-            {
-                // 画面で変えている間はすぐに反映し、キャンセルされたら元に戻す
-                ApplyMeterSettings(dialog.ShowDialog(this) == DialogResult.OK ? dialog.Settings : original);
-            }
-        }
 
         private void ApplyMeterSettings(LevelMeterSettings settings)
         {
@@ -803,7 +970,10 @@ namespace KMidiPlayer
 
         private void aboutMenuItem_Click(object sender, EventArgs e)
         {
-            MessageBox.Show(this, Texts.AboutText(Application.ProductVersion), Texts.AboutTitle, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            using (var dialog = new AboutForm(Icon))
+            {
+                dialog.ShowDialog(this);
+            }
         }
 
         private void seekBar_SeekRequested(object sender, EventArgs e)
@@ -815,6 +985,10 @@ namespace KMidiPlayer
         private void channelPanelMenuItem_CheckedChanged(object sender, EventArgs e)
         {
             splitContainer.Panel2Collapsed = !channelPanelMenuItem.Checked;
+
+            // チャンネルパネルの表示内容の設定は、パネルを出しているときだけ選べるようにする
+            usedChannelsOnlyMenuItem.Enabled = channelPanelMenuItem.Checked;
+            _instrumentMenuItem.Enabled = channelPanelMenuItem.Checked;
         }
 
         private void usedChannelsOnlyMenuItem_CheckedChanged(object sender, EventArgs e)
@@ -826,6 +1000,135 @@ namespace KMidiPlayer
         private void topMostMenuItem_CheckedChanged(object sender, EventArgs e)
         {
             TopMost = topMostMenuItem.Checked;
+        }
+
+        // ---- マスター音量 ----
+
+        private void volumeSlider_ValueChanged(object sender, EventArgs e)
+        {
+            _sequencer.MasterVolume = (int)Math.Round(volumeSlider.Value);
+            UpdateVolumeDisplay();
+        }
+
+        /// <summary>ボタンで、ミュート（0%）と、ミュートする前の音量を切り替える。</summary>
+        private void volumeButton_Click(object sender, EventArgs e)
+        {
+            int volume = _sequencer.MasterVolume;
+            if (volume > MidiSequencer.MinMasterVolume)
+            {
+                _volumeBeforeMute = volume;
+                volume = MidiSequencer.MinMasterVolume;
+            }
+            else
+            {
+                volume = _volumeBeforeMute > MidiSequencer.MinMasterVolume ? _volumeBeforeMute : MidiSequencer.MaxMasterVolume;
+            }
+            volumeSlider.Value = volume;
+            _sequencer.MasterVolume = volume;
+            UpdateVolumeDisplay();
+        }
+
+        /// <summary>マスター音量のボタンの記号（音量に合わせたスピーカー）と、ツールチップを今の音量に合わせる。</summary>
+        private void UpdateVolumeDisplay()
+        {
+            int volume = _sequencer.MasterVolume;
+            volumeButton.Text = volume <= MidiSequencer.MinMasterVolume
+                ? MuteGlyph
+                : VolumeGlyphs[Math.Min(VolumeGlyphs.Length - 1, (volume - 1) * VolumeGlyphs.Length / MidiSequencer.MaxMasterVolume)];
+            toolTip.SetToolTip(volumeButton, Texts.MasterVolumeButtonTip(volume <= MidiSequencer.MinMasterVolume));
+            toolTip.SetToolTip(volumeSlider, Texts.MasterVolumeTip(volume));
+        }
+
+        // ---- 音色名 ----
+
+        /// <summary>
+        /// 「音色名」のサブメニューを用意する（表示メニューへの配置は <see cref="ArrangeViewMenu"/>）。
+        /// 中身（「音色名を表示」、音源定義の一覧、フォルダを開く）は、開くたびに作り直す。
+        /// </summary>
+        private void CreateInstrumentMenus()
+        {
+            _instrumentNamesMenuItem.CheckedChanged += instrumentNamesMenuItem_CheckedChanged;
+
+            // サブメニューの印（▶）を出し、文字の大きさを合わせられるよう、最初から項目を入れておく
+            _instrumentMenuItem.DropDownItems.Add(_instrumentNamesMenuItem);
+            _instrumentMenuItem.DropDownOpening += instrumentMenuItem_DropDownOpening;
+        }
+
+        private void instrumentNamesMenuItem_CheckedChanged(object sender, EventArgs e)
+        {
+            channelView.ShowInstrumentNames = _instrumentNamesMenuItem.Checked;
+            channelView.UpdateFrom(_sequencer);
+        }
+
+        /// <summary>
+        /// 「音色名」のサブメニューを作り直す（「音色名を表示」、見出しと、フォルダにある音源定義の一覧、フォルダを開く）。
+        /// 選んでいるファイルが書き換えられていたら、ここで読み込み直す（書き換えた内容を、メニューを開くだけで反映できるように）。
+        /// </summary>
+        private void instrumentMenuItem_DropDownOpening(object sender, EventArgs e)
+        {
+            _instruments.EnsureFolder();
+            _instruments.ReloadIfChanged();
+            channelView.UpdateFrom(_sequencer);
+
+            ToolStripItemCollection items = _instrumentMenuItem.DropDownItems;
+            items.Clear();
+            items.Add(_instrumentNamesMenuItem);
+            items.Add(new ToolStripSeparator());
+            items.Add(new ToolStripMenuItem(Texts.InstrumentDefinitionHeader) { Enabled = false });
+            int firstDefinition = items.Count;
+            string currentPath = _instruments.Current?.FilePath;
+            foreach (InstrumentLibrary.DefinitionFile file in _instruments.ListFiles())
+            {
+                var item = new ToolStripMenuItem(file.Name.Replace("&", "&&"))
+                {
+                    Checked = string.Equals(file.Path, currentPath, StringComparison.OrdinalIgnoreCase),
+                    ToolTipText = file.FileName,
+                    Tag = file,
+                };
+                item.Click += instrumentDefinitionItem_Click;
+                items.Add(item);
+            }
+            if (items.Count == firstDefinition)
+            {
+                items.Add(new ToolStripMenuItem(Texts.NoInstrumentDefinitions) { Enabled = false });
+            }
+            items.Add(new ToolStripSeparator());
+            var openFolderItem = new ToolStripMenuItem(Texts.OpenModulesFolder);
+            openFolderItem.Click += openModulesFolderMenuItem_Click;
+            items.Add(openFolderItem);
+        }
+
+        private void instrumentDefinitionItem_Click(object sender, EventArgs e)
+        {
+            var file = (InstrumentLibrary.DefinitionFile)((ToolStripItem)sender).Tag;
+            try
+            {
+                _instruments.Load(file.FileName); // 同じファイルを選び直したときも、読み込み直す
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException)
+            {
+                string message = ex is InvalidDataException ? Texts.NotInstrumentDefinition : ex.Message;
+                MessageBox.Show(this, Texts.InstrumentDefinitionError(file.FileName, message), Texts.InstrumentDefinitionErrorTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            _settings.InstrumentDefinitionFile = file.FileName;
+
+            // 名前を見るために選んだはずなので、表示していなければ表示する（CheckedChanged で画面にも反映される）
+            _instrumentNamesMenuItem.Checked = true;
+            channelView.UpdateFrom(_sequencer);
+        }
+
+        private void openModulesFolderMenuItem_Click(object sender, EventArgs e)
+        {
+            _instruments.EnsureFolder();
+            try
+            {
+                System.Diagnostics.Process.Start("explorer.exe", "\"" + _instruments.FolderPath + "\"");
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, Texts.InstrumentDefinitionErrorTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         // ---- ピアノロール ----
@@ -2283,6 +2586,32 @@ namespace KMidiPlayer
             }
             channelPanelMenuItem.Checked = _settings.ChannelPanelVisible;
             usedChannelsOnlyMenuItem.Checked = _settings.ShowUsedChannelsOnly;
+            RestoreInstrumentDefinition();
+            _instrumentNamesMenuItem.Checked = _settings.ShowInstrumentNames;
+            channelView.NameColumnExtraWidth = _settings.ChannelNameColumnExtraWidth;
+            channelView.ShowInstrumentNames = _settings.ShowInstrumentNames;
+        }
+
+        /// <summary>
+        /// 音源定義のフォルダ（と同梱の GM2 の定義）を用意して、前回選んだ音源定義を読み込む。
+        /// 読み込めなければ（消した・壊れているなど）、同梱の GM2 の定義にする（それも読めなければ、内蔵の GM2 の名前を使う）。
+        /// </summary>
+        private void RestoreInstrumentDefinition()
+        {
+            _instruments.EnsureFolder();
+            foreach (string fileName in new[] { _settings.InstrumentDefinitionFile, InstrumentLibrary.BuiltInFileName })
+            {
+                try
+                {
+                    _instruments.Load(fileName);
+                    break;
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException)
+                {
+                    // 次の候補にする
+                }
+            }
+            channelView.Instruments = _instruments;
         }
 
         private void RestoreOutputDevice()
@@ -2375,6 +2704,10 @@ namespace KMidiPlayer
             }
             _settings.ChannelPanelVisible = channelPanelMenuItem.Checked;
             _settings.ShowUsedChannelsOnly = usedChannelsOnlyMenuItem.Checked;
+            _settings.ShowInstrumentNames = _instrumentNamesMenuItem.Checked;
+            _settings.ChannelNameColumnExtraWidth = channelView.NameColumnExtraWidth;
+            _settings.MasterVolume = _sequencer.MasterVolume;
+            // 音源定義のファイル名は、メニューで選んだときに覚える（起動時に読めずに GM2 にした場合は、選んだものを残す）
             _settings.ColumnWidths = playlistView.Columns.Cast<ColumnHeader>().Select(column => column.Width).ToArray();
             if (_currentItem != null)
             {
@@ -2387,6 +2720,7 @@ namespace KMidiPlayer
             _settings.VelocityCurve = velocityCurveBox.Value;
             _settings.Language = Texts.Current;
             _settings.ColorTheme = Theme.Current.Kind;
+            _settings.TextSizePercent = UiScale.Percent;
             _settings.SkipLeadingSilence = skipSilenceMenuItem.Checked;
             _settings.TopMost = topMostMenuItem.Checked;
             _settings.PianoRollVisible = pianoRollMenuItem.Checked;
